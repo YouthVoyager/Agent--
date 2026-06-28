@@ -20,6 +20,9 @@ func TestLoadDefault(t *testing.T) {
 	if cfg.Server.Address != ":8080" {
 		t.Fatalf("默认监听地址 = %q, want :8080", cfg.Server.Address)
 	}
+	if len(cfg.AI.Backends) != 2 {
+		t.Fatalf("默认模型后端数量 = %d, want 2", len(cfg.AI.Backends))
+	}
 }
 
 func TestLoadFile(t *testing.T) {
@@ -63,5 +66,14 @@ func TestValidateRejectsInvalidAddress(t *testing.T) {
 
 	if err := cfg.Validate(); err == nil {
 		t.Fatal("Validate() error = nil, want invalid address error")
+	}
+}
+
+func TestValidateRejectsDuplicateModel(t *testing.T) {
+	cfg := Default()
+	cfg.AI.Backends[1].Models = []string{"mock-a"}
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() error = nil, want duplicate model error")
 	}
 }

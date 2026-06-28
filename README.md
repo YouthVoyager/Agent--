@@ -24,6 +24,9 @@ Tempo      Mimir      Datadog/其他
 
 - `cmd/gateway` 可运行入口；
 - JSON 配置读取和环境变量覆盖；
+- OpenAI 风格 `/v1/models` 与 `/v1/chat/completions` 接口；
+- 两个默认 mock 模型后端，可替换为 OpenAI 兼容真实服务；
+- `text/event-stream` SSE 流式输出；
 - `context.Context` 生命周期和 SIGTERM 优雅退出；
 - `/healthz`、`/readyz`、`/metrics`；
 - `/debug/pprof`；
@@ -46,6 +49,39 @@ curl localhost:8080/readyz
 curl localhost:8080/metrics
 ```
 
+检查模型列表：
+
+```bash
+curl localhost:8080/v1/models
+```
+
+非流式聊天补全：
+
+```bash
+curl localhost:8080/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model": "mock-a",
+    "messages": [
+      {"role": "user", "content": "你好"}
+    ]
+  }'
+```
+
+SSE 流式聊天补全：
+
+```bash
+curl -N localhost:8080/v1/chat/completions \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "model": "mock-b",
+    "stream": true,
+    "messages": [
+      {"role": "user", "content": "请流式输出"}
+    ]
+  }'
+```
+
 也可以直接运行：
 
 ```bash
@@ -65,7 +101,34 @@ make run
   },
   "observability": {
     "metrics_namespace": "gateway"
+  },
+  "ai": {
+    "request_timeout": "30s",
+    "backends": [
+      {
+        "name": "mock-a",
+        "type": "mock",
+        "models": ["mock-a", "gpt-4o-mini"]
+      },
+      {
+        "name": "mock-b",
+        "type": "mock",
+        "models": ["mock-b", "gpt-4.1-mini"]
+      }
+    ]
   }
+}
+```
+
+真实模型服务可使用 OpenAI 兼容协议接入，`base_url` 可以是服务根地址或 `/v1` 地址：
+
+```json
+{
+  "name": "real-a",
+  "type": "openai",
+  "base_url": "https://api.openai.com/v1",
+  "api_key_env": "OPENAI_API_KEY",
+  "models": ["gpt-4.1-mini"]
 }
 ```
 

@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/agent-gateway/telemetry-gateway/internal/config"
+	"github.com/agent-gateway/telemetry-gateway/internal/llm"
 	"github.com/agent-gateway/telemetry-gateway/internal/observability"
 )
 
@@ -34,6 +35,14 @@ func New(cfg config.Config, logger *slog.Logger) (*App, error) {
 	}
 
 	mux := http.NewServeMux()
+	metrics := observability.NewMetrics()
+
+	llmHandler, err := llm.NewHandler(cfg.AI, logger,metrics)
+	if err != nil {
+		return nil, err
+	}
+	llm.Register(mux, llmHandler)
+
 	observability.Register(mux, observability.State{
 		ServiceName:      "telemetry-gateway",
 		StartTime:        gateway.startedAt,

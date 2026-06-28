@@ -2,9 +2,10 @@ package observability
 
 import (
 	"encoding/json"
-	"fmt"
 	"net/http"
 	"time"
+
+	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
 
 type State struct {
@@ -24,10 +25,12 @@ func Register(mux *http.ServeMux, state State) {
 	if state.MetricsNamespace == "" {
 		state.MetricsNamespace = "gateway"
 	}
+	
+
 
 	mux.HandleFunc("/healthz", healthHandler(state))
 	mux.HandleFunc("/readyz", readyHandler(state))
-	mux.HandleFunc("/metrics", metricsHandler(state))
+	mux.Handle("/metrics", promhttp.Handler())
 	registerPprof(mux)
 }
 
@@ -68,30 +71,7 @@ func readyHandler(state State) http.HandlerFunc {
 	}
 }
 
-func metricsHandler(state State) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodGet {
-			w.WriteHeader(http.StatusMethodNotAllowed)
-			return
-		}
 
-		ready := 0
-		if isReady(state) {
-			ready = 1
-		}
-
-		w.Header().Set("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
-		fmt.Fprintf(w, "# HELP %s_up Whether the gateway process is running.\n", state.MetricsNamespace)
-		fmt.Fprintf(w, "# TYPE %s_up gauge\n", state.MetricsNamespace)
-		fmt.Fprintf(w, "%s_up 1\n", state.MetricsNamespace)
-		fmt.Fprintf(w, "# HELP %s_ready Whether the gateway is ready to receive traffic.\n", state.MetricsNamespace)
-		fmt.Fprintf(w, "# TYPE %s_ready gauge\n", state.MetricsNamespace)
-		fmt.Fprintf(w, "%s_ready %d\n", state.MetricsNamespace, ready)
-		fmt.Fprintf(w, "# HELP %s_start_time_seconds Gateway process start time.\n", state.MetricsNamespace)
-		fmt.Fprintf(w, "# TYPE %s_start_time_seconds gauge\n", state.MetricsNamespace)
-		fmt.Fprintf(w, "%s_start_time_seconds %d\n", state.MetricsNamespace, state.StartTime.Unix())
-	}
-}
 
 func isReady(state State) bool {
 	return state.Ready != nil && state.Ready()

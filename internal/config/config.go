@@ -10,6 +10,7 @@ import (
 type Config struct {
 	Server        ServerConfig        `json:"server"`
 	Observability ObservabilityConfig `json:"observability"`
+	AI            AIConfig            `json:"ai"`
 }
 
 type ServerConfig struct {
@@ -20,6 +21,20 @@ type ServerConfig struct {
 
 type ObservabilityConfig struct {
 	MetricsNamespace string `json:"metrics_namespace"`
+}
+
+type AIConfig struct {
+	RequestTimeout Duration             `json:"request_timeout"`
+	Backends       []ModelBackendConfig `json:"backends"`
+}
+
+type ModelBackendConfig struct {
+	Name      string   `json:"name"`
+	Type      string   `json:"type"`
+	BaseURL   string   `json:"base_url,omitempty"`
+	APIKey    string   `json:"api_key,omitempty"`
+	APIKeyEnv string   `json:"api_key_env,omitempty"`
+	Models    []string `json:"models"`
 }
 
 // Duration 支持在 JSON 配置中使用 "5s" 这类可读写法。
@@ -36,6 +51,21 @@ func Default() Config {
 		},
 		Observability: ObservabilityConfig{
 			MetricsNamespace: "gateway",
+		},
+		AI: AIConfig{
+			RequestTimeout: Duration{Duration: 30 * time.Second},
+			Backends: []ModelBackendConfig{
+				{
+					Name:   "mock-a",
+					Type:   "mock",
+					Models: []string{"mock-a", "gpt-4o-mini"},
+				},
+				{
+					Name:   "mock-b",
+					Type:   "mock",
+					Models: []string{"mock-b", "gpt-4.1-mini"},
+				},
+			},
 		},
 	}
 }

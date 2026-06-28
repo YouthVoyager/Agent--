@@ -6,5 +6,20 @@
   },
   "observability": {
     "metrics_namespace": "gateway"
+  },
+  "ai": {
+    "request_timeout": "30s",
+    "backends": [
+      {
+        "name": "mock-a",
+        "type": "mock",
+        "models": ["mock-a", "gpt-4o-mini"]
+      },
+      {
+        "name": "mock-b",
+        "type": "mock",
+        "models": ["mock-b", "gpt-4.1-mini"]
+      }
+    ]
   }
 }
