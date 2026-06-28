@@ -1,24 +1,64 @@
 package observability
 
-import "github.com/prometheus/client_golang/prometheus"
+import (
+	"net/http"
+	"strings"
+
+	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+)
+
 type Metrics struct {
-	RequestsTotal  *prometheus.CounterVec
+	Registry      *prometheus.Registry
+	RequestsTotal *prometheus.CounterVec
 }
-func NewMetrics() *Metrics {
-	m := &Metrics{
+
+func NewMetrics(namespace string, ready func() bool) *Metrics {
+	namespace = strings.TrimSpace(namespace)
+	if namespace == "" {
+		namespace = "gateway"
+	}
+
+	registry := prometheus.NewRegistry()
+	metrics := &Metrics{
+		Registry: registry,
 		RequestsTotal: prometheus.NewCounterVec(
 			prometheus.CounterOpts{
-				Namespace: "aegisllm",
+				Namespace: namespace,
 				Name:      "requests_total",
-				Help:      "Total number of requests.",
+				Help:      "Total number of model backend requests.",
 			},
-			[]string{"method", "result"},
+			[]string{"backend", "result"},
 		),
 	}
 
-	prometheus.MustRegister(
-		m.RequestsTotal,
+	registry.MustRegister(
+		metrics.RequestsTotal,
+		prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+			Namespace: namespace,
+			Name:      "up",
+			Help:      "Whether the gateway process is up.",
+		}, func() float64 {
+			return 1
+		}),
+		prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+			Namespace: namespace,
+			Name:      "ready",
+			Help:      "Whether the gateway is ready to serve traffic.",
+		}, func() float64 {
+			if ready != nil && ready() {
+				return 1
+			}
+			return 0
+		}),
 	)
 
-	return m
+	return metrics
+}
+
+func registerMetrics(mux *http.ServeMux, metrics *Metrics) {
+	if metrics == nil || metrics.Registry == nil {
+		metrics = NewMetrics("gateway", nil)
+	}
+	mux.Handle("/metrics", promhttp.HandlerFor(metrics.Registry, promhttp.HandlerOpts{}))
 }

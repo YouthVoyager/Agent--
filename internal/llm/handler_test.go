@@ -107,7 +107,7 @@ func newProxyTestHandler(t *testing.T, transport http.RoundTripper) *Handler {
 				Models: []string{"mock-b"},
 			},
 		},
-	}, nil)
+	}, nil, nil)
 	if err != nil {
 		t.Fatalf("NewHandler() error = %v", err)
 	}

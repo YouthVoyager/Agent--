@@ -35,9 +35,11 @@ func New(cfg config.Config, logger *slog.Logger) (*App, error) {
 	}
 
 	mux := http.NewServeMux()
-	metrics := observability.NewMetrics()
+	metrics := observability.NewMetrics(cfg.Observability.MetricsNamespace, func() bool {
+		return gateway.ready.Load()
+	})
 
-	llmHandler, err := llm.NewHandler(cfg.AI, logger,metrics)
+	llmHandler, err := llm.NewHandler(cfg.AI, logger, metrics)
 	if err != nil {
 		return nil, err
 	}
@@ -50,7 +52,7 @@ func New(cfg config.Config, logger *slog.Logger) (*App, error) {
 		Ready: func() bool {
 			return gateway.ready.Load()
 		},
-	})
+	}, metrics)
 
 	gateway.handler = mux
 	gateway.server = &http.Server{
