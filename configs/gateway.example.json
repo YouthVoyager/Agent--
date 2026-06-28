@@ -1,0 +1,10 @@
+{
+  "server": {
+    "address": ":8080",
+    "read_header_timeout": "5s",
+    "shutdown_timeout": "10s"
+  },
+  "observability": {
+    "metrics_namespace": "gateway"
+  }
+}
