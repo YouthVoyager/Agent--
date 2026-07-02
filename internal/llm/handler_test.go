@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/agent-gateway/telemetry-gateway/internal/config"
 	"github.com/agent-gateway/telemetry-gateway/internal/observability"
@@ -99,7 +100,8 @@ func newProxyTestHandlerWithMetrics(t *testing.T, transport http.RoundTripper, m
 	t.Helper()
 
 	handler, err := NewHandler(config.AIConfig{
-		RequestTimeout: config.Duration{Duration: 1},
+		RequestTimeout:    config.Duration{Duration: time.Second},
+		FirstTokenTimeout: config.Duration{Duration: time.Second},
 		Backends: []config.ModelBackendConfig{
 			{
 				Name:    "real-a",

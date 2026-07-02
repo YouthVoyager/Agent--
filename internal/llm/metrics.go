@@ -24,3 +24,17 @@ func (h *Handler) observeBackendRequest(backendName, result string, duration tim
 	}
 	h.metrics.ObserveModelBackendRequest(backendName, result, duration)
 }
+
+func (h *Handler) observeFallback(fromModel, toModel, reason string) {
+	if h.metrics == nil {
+		return
+	}
+	h.metrics.ObserveModelFallback(fromModel, toModel, reason)
+}
+
+func (h *Handler) observeUpstreamError(backendName, reason string) {
+	if h.metrics == nil {
+		return
+	}
+	h.metrics.ObserveUpstreamError(backendName, reason)
+}

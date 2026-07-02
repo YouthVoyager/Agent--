@@ -90,31 +90,30 @@ func writeSSE(w io.Writer, flusher http.Flusher, payload any) bool {
 	if err != nil {
 		return false
 	}
-	if _, err := fmt.Fprintf(w, "data: %s\n\n", data); err != nil {
-		return false
-	}
-	flusher.Flush()
-	return true
+	return writeSSEData(w, flusher, string(data))
 }
 
 func streamCopy(w http.ResponseWriter, body io.Reader, metrics *observability.Metrics, model string, start time.Time) bool {
-	//标记首token
-	firstContentTokenObserved := false
+	if _, ok := w.(http.Flusher); !ok {
+		return false
+	}
+	reader := bufio.NewReader(body)
+	return streamCopyFromReader(w, reader, metrics, model, start, false)
+}
+
+func streamCopyFromReader(w io.Writer, reader *bufio.Reader, metrics *observability.Metrics, model string, start time.Time, firstContentTokenObserved bool) bool {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		return false
 	}
-	reader := bufio.NewReader(body)
 	for {
 		event, err := readSSEEvent(reader)
 		//判断是否为数据包
 		if event.Data != "" {
 			// 先把原始 SSE event 透传给客户端
-			_, writeErr := fmt.Fprintf(w, "data: %s\n\n", event.Data)
-			if writeErr != nil {
+			if !writeSSEData(w, flusher, event.Data) {
 				return false
 			}
-			flusher.Flush()
 
 			// 成功写出并 flush 后，再统计首 content token
 			if !firstContentTokenObserved && hasContentToken(event.Data) {
@@ -128,6 +127,26 @@ func streamCopy(w http.ResponseWriter, body io.Reader, metrics *observability.Me
 			return errors.Is(err, io.EOF)
 		}
 	}
+}
+
+func writeBufferedSSE(w io.Writer, flusher http.Flusher, events []sseEvent) bool {
+	for _, event := range events {
+		if event.Data == "" {
+			continue
+		}
+		if !writeSSEData(w, flusher, event.Data) {
+			return false
+		}
+	}
+	return true
+}
+
+func writeSSEData(w io.Writer, flusher http.Flusher, data string) bool {
+	if _, err := fmt.Fprintf(w, "data: %s\n\n", data); err != nil {
+		return false
+	}
+	flusher.Flush()
+	return true
 }
 
 func splitText(text string, chunkSize int) []string {

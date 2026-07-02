@@ -29,6 +29,7 @@ Tempo      Mimir      Datadog/其他
 - `text/event-stream` SSE 流式输出；
 - 可配置的用户级请求限流；
 - 可配置的聊天补全全局并发限制；
+- 上游超时、熔断和模型降级；
 - `context.Context` 生命周期和 SIGTERM 优雅退出；
 - `/healthz`、`/readyz`、`/metrics`；
 - `/debug/pprof`；
@@ -51,11 +52,15 @@ curl localhost:8080/readyz
 curl localhost:8080/metrics
 ```
 
-默认命名空间下，LLM 请求会暴露这些 Prometheus 指标：
+LLM 请求会暴露这些 Prometheus 指标：
 
 - `gateway_requests_total{backend,result}`：按后端和结果累计请求数；
 - `gateway_request_duration_seconds{backend,result}`：完整请求总延迟；
 - `gateway_request_success_rate{backend}`：进程启动以来的累计请求成功率，取值范围为 `0` 到 `1`。
+- `aegis_first_token_duration_seconds{model}`：流式响应首个内容 token 延迟；
+- `gateway_fallbacks_total{from_model,to_model,reason}`：模型降级次数；
+- `gateway_upstream_errors_total{backend,reason}`：可触发容错的上游错误次数；
+- `gateway_circuit_breaker_state{backend}`：后端熔断状态，`0` 表示关闭、`1` 表示半开、`2` 表示打开。
 
 检查模型列表：
 
@@ -131,6 +136,14 @@ make run
   },
   "ai": {
     "request_timeout": "30s",
+    "first_token_timeout": "30s",
+    "circuit_breaker": {
+      "enabled": true,
+      "failure_threshold": 3,
+      "open_timeout": "30s",
+      "half_open_max_requests": 1
+    },
+    "fallbacks": {},
     "backends": [
       {
         "name": "mock-a",
@@ -209,6 +222,28 @@ curl localhost:8080/v1/models \
   }
 }
 ```
+
+模型代理支持上游超时、按后端熔断和按模型链路降级：
+
+```json
+{
+  "ai": {
+    "request_timeout": "30s",
+    "first_token_timeout": "10s",
+    "circuit_breaker": {
+      "enabled": true,
+      "failure_threshold": 3,
+      "open_timeout": "30s",
+      "half_open_max_requests": 1
+    },
+    "fallbacks": {
+      "gpt-4o-mini": ["gpt-4.1-mini", "mock-b"]
+    }
+  }
+}
+```
+
+触发降级的失败包括上游超时、网络错误、`5xx` 和 `429`；普通客户端错误类 `4xx` 会直接透传，不计入熔断失败。流式请求只会在响应写给客户端前降级，首个内容 token 已经输出后不会切换备用模型。
 
 真实模型服务可使用 OpenAI 兼容协议接入，`base_url` 可以是服务根地址或 `/v1` 地址：
 

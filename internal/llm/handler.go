@@ -18,11 +18,15 @@ const maxRequestBodyBytes = 10 << 20
 // Handler 处理 OpenAI 兼容的 LLM HTTP 请求。
 type Handler struct {
 	//处理器属性,包括配置以及依赖
-	logger   *slog.Logger
-	client   *http.Client
-	backends map[string]modelBackend
-	models   []modelInfo
-	metrics  *observability.Metrics
+	logger            *slog.Logger
+	client            *http.Client
+	backends          map[string]modelBackend
+	models            []modelInfo
+	metrics           *observability.Metrics
+	requestTimeout    time.Duration
+	firstTokenTimeout time.Duration
+	fallbacks         map[string][]string
+	circuitBreaker    *circuitBreaker
 }
 
 // NewHandler 创建并初始化一个 LLM HTTP 处理器。
@@ -30,23 +34,29 @@ func NewHandler(cfg config.AIConfig, logger *slog.Logger, metrics *observability
 	if logger == nil {
 		logger = slog.Default()
 	}
+	cfg = normalizeAIConfig(cfg)
 	//配置tcp超时
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.ResponseHeaderTimeout = cfg.RequestTimeout.Duration
 
 	handler := &Handler{
-		logger:   logger,
-		client:   &http.Client{Transport: transport},
-		backends: make(map[string]modelBackend),
-		metrics:  metrics,
+		logger:            logger,
+		client:            &http.Client{Transport: transport},
+		backends:          make(map[string]modelBackend),
+		metrics:           metrics,
+		requestTimeout:    cfg.RequestTimeout.Duration,
+		firstTokenTimeout: cfg.FirstTokenTimeout.Duration,
+		fallbacks:         normalizeFallbacks(cfg.Fallbacks),
 	}
 	//读取配置
+	backendNames := make([]string, 0, len(cfg.Backends))
 	for _, backendCfg := range cfg.Backends {
 		backendType := normalizeBackendType(backendCfg.Type)
 		backend := modelBackend{
 			cfg:         backendCfg,
 			backendType: backendType,
 		}
+		backendNames = append(backendNames, backendCfg.Name)
 		if backendType != "mock" {
 			backend.chatCompletionsURL = chatCompletionsURL(backendCfg.BaseURL)
 		}
@@ -60,6 +70,7 @@ func NewHandler(cfg config.AIConfig, logger *slog.Logger, metrics *observability
 			})
 		}
 	}
+	handler.circuitBreaker = newCircuitBreaker(cfg.CircuitBreaker, backendNames, metrics)
 
 	return handler, nil
 }
@@ -106,18 +117,12 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	backend, ok := h.backends[req.Model]
-	if !ok {
+	if _, ok := h.backends[req.Model]; !ok {
 		writeOpenAIError(w, http.StatusNotFound, fmt.Sprintf("模型 %q 未配置后端", req.Model), "invalid_request_error", "model")
 		return
 	}
 
-	if backend.backendType == "mock" {
-		h.serveMock(w, r, req, backend)
-		return
-	}
-	//调用AI客户端
-	h.proxyOpenAICompatible(w, r, rawBody, req, backend)
+	h.serveChatCompletionWithFallback(w, r, rawBody, req)
 }
 
 // ListModels 处理模型列表查询请求。

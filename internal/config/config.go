@@ -36,8 +36,18 @@ type ConcurrencyLimitConfig struct {
 }
 
 type AIConfig struct {
-	RequestTimeout Duration             `json:"request_timeout"`
-	Backends       []ModelBackendConfig `json:"backends"`
+	RequestTimeout    Duration             `json:"request_timeout"`
+	FirstTokenTimeout Duration             `json:"first_token_timeout"`
+	CircuitBreaker    CircuitBreakerConfig `json:"circuit_breaker"`
+	Fallbacks         map[string][]string  `json:"fallbacks"`
+	Backends          []ModelBackendConfig `json:"backends"`
+}
+
+type CircuitBreakerConfig struct {
+	Enabled             bool     `json:"enabled"`
+	FailureThreshold    int      `json:"failure_threshold"`
+	OpenTimeout         Duration `json:"open_timeout"`
+	HalfOpenMaxRequests int      `json:"half_open_max_requests"`
 }
 
 type ModelBackendConfig struct {

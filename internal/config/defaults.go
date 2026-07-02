@@ -31,7 +31,15 @@ func Default() Config {
 			},
 		},
 		AI: AIConfig{
-			RequestTimeout: Duration{Duration: 30 * time.Second},
+			RequestTimeout:    Duration{Duration: 30 * time.Second},
+			FirstTokenTimeout: Duration{Duration: 30 * time.Second},
+			CircuitBreaker: CircuitBreakerConfig{
+				Enabled:             true,
+				FailureThreshold:    3,
+				OpenTimeout:         Duration{Duration: 30 * time.Second},
+				HalfOpenMaxRequests: 1,
+			},
+			Fallbacks: map[string][]string{},
 			Backends: []ModelBackendConfig{
 				{
 					Name:   "mock-a",

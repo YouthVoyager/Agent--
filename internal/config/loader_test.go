@@ -38,6 +38,18 @@ func TestLoadDefault(t *testing.T) {
 	if cfg.Auth.APIKey.Header != "Authorization" {
 		t.Fatalf("默认 API Key 请求头 = %q, want Authorization", cfg.Auth.APIKey.Header)
 	}
+	if cfg.AI.FirstTokenTimeout.Duration != cfg.AI.RequestTimeout.Duration {
+		t.Fatalf("默认首 token 超时 = %s, want %s", cfg.AI.FirstTokenTimeout.Duration, cfg.AI.RequestTimeout.Duration)
+	}
+	if !cfg.AI.CircuitBreaker.Enabled {
+		t.Fatal("默认熔断器应启用")
+	}
+	if cfg.AI.CircuitBreaker.FailureThreshold != 3 {
+		t.Fatalf("默认熔断失败阈值 = %d, want 3", cfg.AI.CircuitBreaker.FailureThreshold)
+	}
+	if len(cfg.AI.Fallbacks) != 0 {
+		t.Fatalf("默认 fallback 数量 = %d, want 0", len(cfg.AI.Fallbacks))
+	}
 }
 
 func TestLoadFile(t *testing.T) {
@@ -241,5 +253,48 @@ func TestValidateRejectsInvalidAPIKeyAuth(t *testing.T) {
 
 	if err := cfg.Validate(); err == nil {
 		t.Fatal("Validate() error = nil, want invalid API Key auth error")
+	}
+}
+
+func TestValidateRejectsInvalidCircuitBreaker(t *testing.T) {
+	cfg := Default()
+	cfg.AI.CircuitBreaker.FailureThreshold = 0
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() error = nil, want invalid circuit breaker error")
+	}
+}
+
+func TestValidateRejectsUnknownFallbackModel(t *testing.T) {
+	cfg := Default()
+	cfg.AI.Fallbacks = map[string][]string{
+		"mock-a": {"missing-model"},
+	}
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() error = nil, want unknown fallback model error")
+	}
+}
+
+func TestValidateRejectsSelfFallback(t *testing.T) {
+	cfg := Default()
+	cfg.AI.Fallbacks = map[string][]string{
+		"mock-a": {"mock-a"},
+	}
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() error = nil, want self fallback error")
+	}
+}
+
+func TestValidateRejectsFallbackCycle(t *testing.T) {
+	cfg := Default()
+	cfg.AI.Fallbacks = map[string][]string{
+		"mock-a": {"mock-b"},
+		"mock-b": {"mock-a"},
+	}
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() error = nil, want fallback cycle error")
 	}
 }

@@ -65,3 +65,24 @@ func (m *Metrics) ObserveModelBackendRequest(backend, result string, duration ti
 		m.RequestSuccessRate.WithLabelValues(backend).Set(rate)
 	}
 }
+
+func (m *Metrics) ObserveModelFallback(fromModel, toModel, reason string) {
+	if m == nil || m.FallbacksTotal == nil {
+		return
+	}
+	m.FallbacksTotal.WithLabelValues(fromModel, toModel, reason).Inc()
+}
+
+func (m *Metrics) ObserveUpstreamError(backend, reason string) {
+	if m == nil || m.UpstreamErrorsTotal == nil {
+		return
+	}
+	m.UpstreamErrorsTotal.WithLabelValues(backend, reason).Inc()
+}
+
+func (m *Metrics) SetCircuitBreakerState(backend string, state float64) {
+	if m == nil || m.CircuitBreakerState == nil {
+		return
+	}
+	m.CircuitBreakerState.WithLabelValues(backend).Set(state)
+}

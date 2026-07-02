@@ -20,6 +20,12 @@ type Metrics struct {
 	RequestSuccessRate *prometheus.GaugeVec
 	// FirstTokenDuration 记录首个内容 token 返回前的耗时分布。
 	FirstTokenDuration *prometheus.HistogramVec
+	// FallbacksTotal 记录模型降级次数。
+	FallbacksTotal *prometheus.CounterVec
+	// UpstreamErrorsTotal 记录可触发容错的上游错误次数。
+	UpstreamErrorsTotal *prometheus.CounterVec
+	// CircuitBreakerState 记录每个后端的熔断状态。
+	CircuitBreakerState *prometheus.GaugeVec
 
 	requestStats *requestMetricStats
 }
@@ -82,14 +88,44 @@ func NewMetrics(namespace string, ready func() bool) *Metrics {
 			},
 		),
 
+		FallbacksTotal: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: namespace,
+				Name:      "fallbacks_total",
+				Help:      "Total number of model fallback attempts.",
+			},
+			[]string{"from_model", "to_model", "reason"},
+		),
+
+		UpstreamErrorsTotal: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: namespace,
+				Name:      "upstream_errors_total",
+				Help:      "Total number of retryable upstream errors.",
+			},
+			[]string{"backend", "reason"},
+		),
+
+		CircuitBreakerState: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Namespace: namespace,
+				Name:      "circuit_breaker_state",
+				Help:      "Circuit breaker state per backend: 0 closed, 1 half-open, 2 open.",
+			},
+			[]string{"backend"},
+		),
+
 		requestStats: newRequestMetricStats(),
 	}
 
 	registry.MustRegister(
+		metrics.CircuitBreakerState,
+		metrics.FallbacksTotal,
 		metrics.FirstTokenDuration,
 		metrics.RequestDuration,
 		metrics.RequestSuccessRate,
 		metrics.RequestsTotal,
+		metrics.UpstreamErrorsTotal,
 		prometheus.NewGaugeFunc(prometheus.GaugeOpts{
 			Namespace: namespace,
 			Name:      "up",

@@ -52,6 +52,12 @@ func (c Config) Validate() error {
 	if c.AI.RequestTimeout.Duration <= 0 {
 		return fmt.Errorf("ai.request_timeout 必须大于 0")
 	}
+	if c.AI.FirstTokenTimeout.Duration <= 0 {
+		return fmt.Errorf("ai.first_token_timeout 必须大于 0")
+	}
+	if err := validateCircuitBreaker(c.AI.CircuitBreaker); err != nil {
+		return err
+	}
 	if len(c.AI.Backends) < 2 {
 		return fmt.Errorf("ai.backends 至少需要配置 2 个模型后端")
 	}
@@ -102,5 +108,78 @@ func (c Config) Validate() error {
 		}
 	}
 
+	if err := validateFallbacks(c.AI.Fallbacks, models); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func validateCircuitBreaker(cfg CircuitBreakerConfig) error {
+	if cfg.FailureThreshold <= 0 {
+		return fmt.Errorf("ai.circuit_breaker.failure_threshold 必须大于 0")
+	}
+	if cfg.OpenTimeout.Duration <= 0 {
+		return fmt.Errorf("ai.circuit_breaker.open_timeout 必须大于 0")
+	}
+	if cfg.HalfOpenMaxRequests <= 0 {
+		return fmt.Errorf("ai.circuit_breaker.half_open_max_requests 必须大于 0")
+	}
+	return nil
+}
+
+func validateFallbacks(fallbacks map[string][]string, models map[string]string) error {
+	normalized := make(map[string][]string, len(fallbacks))
+	for source, targets := range fallbacks {
+		source = strings.TrimSpace(source)
+		if source == "" {
+			return fmt.Errorf("ai.fallbacks 包含空模型名")
+		}
+		if _, ok := models[source]; !ok {
+			return fmt.Errorf("ai.fallbacks[%q] 未配置对应模型", source)
+		}
+
+		for targetIndex, target := range targets {
+			target = strings.TrimSpace(target)
+			if target == "" {
+				return fmt.Errorf("ai.fallbacks[%q][%d] 不能为空", source, targetIndex)
+			}
+			if _, ok := models[target]; !ok {
+				return fmt.Errorf("ai.fallbacks[%q][%d] 指向未配置模型 %q", source, targetIndex, target)
+			}
+			if target == source {
+				return fmt.Errorf("ai.fallbacks[%q] 不能指向自身", source)
+			}
+			normalized[source] = append(normalized[source], target)
+		}
+	}
+
+	visiting := make(map[string]bool, len(normalized))
+	visited := make(map[string]bool, len(normalized))
+	var visit func(string) error
+	visit = func(model string) error {
+		if visiting[model] {
+			return fmt.Errorf("ai.fallbacks 存在环路，涉及模型 %q", model)
+		}
+		if visited[model] {
+			return nil
+		}
+
+		visiting[model] = true
+		for _, target := range normalized[model] {
+			if err := visit(target); err != nil {
+				return err
+			}
+		}
+		visiting[model] = false
+		visited[model] = true
+		return nil
+	}
+
+	for source := range normalized {
+		if err := visit(source); err != nil {
+			return err
+		}
+	}
 	return nil
 }

@@ -53,10 +53,11 @@ func TestOpenAICompatibleStreamProxyRecordsFirstContentTokenMetric(t *testing.T)
 
 func TestOpenAICompatibleProxyRecordsRequestDurationAndSuccessRate(t *testing.T) {
 	metrics := observability.NewMetrics("gateway", nil)
-	statusCodes := []int{http.StatusOK, http.StatusInternalServerError}
+	statusCodes := []int{http.StatusOK, http.StatusServiceUnavailable}
+	upstreamStatusCodes := []int{http.StatusOK, http.StatusInternalServerError}
 	callIndex := 0
 	handler := newProxyTestHandlerWithMetrics(t, roundTripFunc(func(r *http.Request) (*http.Response, error) {
-		statusCode := statusCodes[callIndex]
+		statusCode := upstreamStatusCodes[callIndex]
 		callIndex++
 		time.Sleep(time.Millisecond)
 
