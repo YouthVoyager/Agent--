@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/agent-gateway/telemetry-gateway/internal/config"
+	"github.com/agent-gateway/telemetry-gateway/internal/tracing"
 )
 
 const (
@@ -102,6 +103,7 @@ func (h *Handler) serveChatCompletionWithFallback(w http.ResponseWriter, r *http
 			nextModel := candidates[index+1]
 			h.logger.Warn(
 				"模型请求触发降级",
+				"trace_id", tracing.TraceIDFromContext(r.Context()),
 				"from_model", model,
 				"to_model", nextModel,
 				"backend", backend.cfg.Name,
@@ -163,7 +165,13 @@ func (h *Handler) proxyOpenAICompatibleNonStream(w http.ResponseWriter, r *http.
 		}
 		permit.Fail()
 		h.observeUpstreamError(backend.cfg.Name, reason)
-		h.logger.Warn("模型后端请求失败", "backend", backend.cfg.Name, "reason", reason, "error", err)
+		h.logger.Warn(
+			"模型后端请求失败",
+			"trace_id", tracing.TraceIDFromContext(r.Context()),
+			"backend", backend.cfg.Name,
+			"reason", reason,
+			"error", err,
+		)
 		return retryableAttempt(reason)
 	}
 	defer resp.Body.Close()
@@ -222,6 +230,7 @@ func (h *Handler) newUpstreamRequest(ctx context.Context, r *http.Request, rawBo
 	} else if authorization := r.Header.Get("Authorization"); authorization != "" {
 		upstreamReq.Header.Set("Authorization", authorization)
 	}
+	tracing.Inject(upstreamReq, ctx)
 
 	return upstreamReq, nil
 }

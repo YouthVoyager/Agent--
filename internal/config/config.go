@@ -15,7 +15,12 @@ type ServerConfig struct {
 }
 
 type ObservabilityConfig struct {
-	MetricsNamespace string `json:"metrics_namespace"`
+	MetricsNamespace string        `json:"metrics_namespace"`
+	Tracing          TracingConfig `json:"tracing"`
+}
+
+type TracingConfig struct {
+	Enabled bool `json:"enabled"`
 }
 
 type RateLimitConfig struct {

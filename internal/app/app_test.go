@@ -66,6 +66,115 @@ func TestMetrics(t *testing.T) {
 	}
 }
 
+func TestTracingAddsResponseHeaders(t *testing.T) {
+	gateway := newTestApp(t)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	gateway.Handler().ServeHTTP(recorder, request)
+
+	traceID := recorder.Header().Get("X-Trace-ID")
+	if len(traceID) != 32 {
+		t.Fatalf("X-Trace-ID = %q, want 32 位 trace id", traceID)
+	}
+	if got := recorder.Header().Get("X-Request-ID"); got != traceID {
+		t.Fatalf("X-Request-ID = %q, want %q", got, traceID)
+	}
+	if got := recorder.Header().Get("Traceparent"); !strings.Contains(got, traceID) {
+		t.Fatalf("Traceparent = %q, want 包含 %q", got, traceID)
+	}
+}
+
+func TestTracingContinuesIncomingTraceParent(t *testing.T) {
+	gateway := newTestApp(t)
+	incoming := "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	request.Header.Set("Traceparent", incoming)
+	gateway.Handler().ServeHTTP(recorder, request)
+
+	if got := recorder.Header().Get("X-Trace-ID"); got != "4bf92f3577b34da6a3ce929d0e0e4736" {
+		t.Fatalf("X-Trace-ID = %q", got)
+	}
+	if got := recorder.Header().Get("Traceparent"); got == incoming {
+		t.Fatalf("响应 Traceparent 应使用网关当前 span，实际仍为入站值 %q", got)
+	}
+}
+
+func TestTracingPropagatesToUpstream(t *testing.T) {
+	var upstreamTraceParent string
+	var upstreamTraceID string
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		upstreamTraceParent = r.Header.Get("Traceparent")
+		upstreamTraceID = r.Header.Get("X-Trace-ID")
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"id":"chatcmpl-upstream","object":"chat.completion","created":1,"model":"real-a","choices":[],"usage":{"prompt_tokens":0,"completion_tokens":0,"total_tokens":0}}`)
+	}))
+	defer upstream.Close()
+
+	cfg := config.Default()
+	cfg.Server.Address = "127.0.0.1:18080"
+	cfg.AI.Backends = []config.ModelBackendConfig{
+		{
+			Name:    "real-a",
+			Type:    "openai",
+			BaseURL: upstream.URL,
+			Models:  []string{"real-a"},
+		},
+		{
+			Name:   "mock-b",
+			Type:   "mock",
+			Models: []string{"mock-b"},
+		},
+	}
+	gateway := newTestAppWithConfig(t, cfg)
+
+	body := strings.NewReader(`{
+  "model": "real-a",
+  "messages": [
+    {"role": "user", "content": "ping"}
+  ]
+}`)
+	incoming := "00-4bf92f3577b34da6a3ce929d0e0e4736-00f067aa0ba902b7-01"
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", body)
+	request.Header.Set("Traceparent", incoming)
+	gateway.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d, body = %s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+	if upstreamTraceID != "4bf92f3577b34da6a3ce929d0e0e4736" {
+		t.Fatalf("上游 X-Trace-ID = %q", upstreamTraceID)
+	}
+	if !strings.Contains(upstreamTraceParent, upstreamTraceID) {
+		t.Fatalf("上游 Traceparent = %q, want 包含 %q", upstreamTraceParent, upstreamTraceID)
+	}
+	if upstreamTraceParent == incoming {
+		t.Fatalf("上游 Traceparent 应使用新的子 span，实际仍为入站值 %q", upstreamTraceParent)
+	}
+}
+
+func TestTracingCanBeDisabled(t *testing.T) {
+	cfg := config.Default()
+	cfg.Server.Address = "127.0.0.1:18080"
+	cfg.Observability.Tracing.Enabled = false
+	gateway := newTestAppWithConfig(t, cfg)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	gateway.Handler().ServeHTTP(recorder, request)
+
+	if got := recorder.Header().Get("X-Trace-ID"); got != "" {
+		t.Fatalf("关闭追踪后 X-Trace-ID = %q, want empty", got)
+	}
+	if got := recorder.Header().Get("Traceparent"); got != "" {
+		t.Fatalf("关闭追踪后 Traceparent = %q, want empty", got)
+	}
+}
+
 func TestChatCompletionMockNonStream(t *testing.T) {
 	gateway := newTestApp(t)
 

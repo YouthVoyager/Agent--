@@ -12,6 +12,7 @@ import (
 	"github.com/agent-gateway/telemetry-gateway/internal/llm"
 	"github.com/agent-gateway/telemetry-gateway/internal/observability"
 	"github.com/agent-gateway/telemetry-gateway/internal/ratelimit"
+	"github.com/agent-gateway/telemetry-gateway/internal/tracing"
 )
 
 // App 表示遥测网关应用，负责持有配置、HTTP 服务与运行状态。
@@ -84,10 +85,15 @@ func New(cfg config.Config, logger *slog.Logger) (*App, error) {
 		},
 	}, metrics)
 
-	gateway.handler = mux
+	var rootHandler http.Handler = mux
+	if cfg.Observability.Tracing.Enabled {
+		rootHandler = tracing.Middleware(logger)(rootHandler)
+	}
+
+	gateway.handler = rootHandler
 	gateway.server = &http.Server{
 		Addr:              cfg.Server.Address,
-		Handler:           mux,
+		Handler:           rootHandler,
 		ReadHeaderTimeout: cfg.Server.ReadHeaderTimeout.Duration,
 	}
 

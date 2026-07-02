@@ -11,6 +11,9 @@ func Default() Config {
 		},
 		Observability: ObservabilityConfig{
 			MetricsNamespace: "gateway",
+			Tracing: TracingConfig{
+				Enabled: true,
+			},
 		},
 		Auth: AuthConfig{
 			APIKey: APIKeyAuthConfig{

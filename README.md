@@ -30,6 +30,7 @@ Tempo      Mimir      Datadog/其他
 - 可配置的用户级请求限流；
 - 可配置的聊天补全全局并发限制；
 - 上游超时、熔断和模型降级；
+- 请求链路追踪，支持 `traceparent` 与 `X-Trace-ID` 透传；
 - `context.Context` 生命周期和 SIGTERM 优雅退出；
 - `/healthz`、`/readyz`、`/metrics`；
 - `/debug/pprof`；
@@ -51,6 +52,8 @@ curl localhost:8080/healthz
 curl localhost:8080/readyz
 curl localhost:8080/metrics
 ```
+
+默认启用请求链路追踪。网关会优先延续入站 `traceparent`，其次使用合法的 `X-Trace-ID` / `X-Request-ID`，都不存在时生成新的 trace id。每个响应都会带上 `Traceparent`、`X-Trace-ID` 和 `X-Request-ID`，代理到上游模型服务时也会透传同一 trace id 并创建新的子 span。访问日志会记录 `trace_id`、`span_id`、HTTP 方法、路径、状态码、响应字节数和耗时。
 
 LLM 请求会暴露这些 Prometheus 指标：
 
@@ -113,7 +116,10 @@ make run
     "shutdown_timeout": "10s"
   },
   "observability": {
-    "metrics_namespace": "gateway"
+    "metrics_namespace": "gateway",
+    "tracing": {
+      "enabled": true
+    }
   },
   "auth": {
     "api_key": {
@@ -156,6 +162,18 @@ make run
         "models": ["mock-b", "gpt-4.1-mini"]
       }
     ]
+  }
+}
+```
+
+如需关闭请求链路追踪：
+
+```json
+{
+  "observability": {
+    "tracing": {
+      "enabled": false
+    }
   }
 }
 ```

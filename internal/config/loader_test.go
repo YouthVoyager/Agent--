@@ -41,6 +41,9 @@ func TestLoadDefault(t *testing.T) {
 	if cfg.AI.FirstTokenTimeout.Duration != cfg.AI.RequestTimeout.Duration {
 		t.Fatalf("默认首 token 超时 = %s, want %s", cfg.AI.FirstTokenTimeout.Duration, cfg.AI.RequestTimeout.Duration)
 	}
+	if !cfg.Observability.Tracing.Enabled {
+		t.Fatal("默认请求链路追踪应启用")
+	}
 	if !cfg.AI.CircuitBreaker.Enabled {
 		t.Fatal("默认熔断器应启用")
 	}
@@ -154,6 +157,33 @@ func TestLoadFileConcurrencyLimit(t *testing.T) {
 	}
 	if cfg.RateLimit.Concurrency.MaxInFlight != 8 {
 		t.Fatalf("max_in_flight = %d", cfg.RateLimit.Concurrency.MaxInFlight)
+	}
+}
+
+func TestLoadFileTracingDisabled(t *testing.T) {
+	t.Setenv("GATEWAY_CONFIG", "")
+	t.Setenv("GATEWAY_ADDRESS", "")
+	t.Setenv("GATEWAY_ADDR", "")
+
+	path := filepath.Join(t.TempDir(), "gateway.json")
+	data := []byte(`{
+  "observability": {
+    "tracing": {
+      "enabled": false
+    }
+  }
+}`)
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatalf("写入测试配置失败: %v", err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if cfg.Observability.Tracing.Enabled {
+		t.Fatal("请求链路追踪应关闭")
 	}
 }
 

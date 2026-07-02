@@ -7,6 +7,8 @@ import (
 	"io"
 	"net/http"
 	"time"
+
+	"github.com/agent-gateway/telemetry-gateway/internal/tracing"
 )
 
 type sseReadResult struct {
@@ -47,7 +49,13 @@ func (h *Handler) proxyOpenAICompatibleStream(
 		}
 		permit.Fail()
 		h.observeUpstreamError(backend.cfg.Name, reason)
-		h.logger.Warn("模型后端流式请求失败", "backend", backend.cfg.Name, "reason", reason, "error", err)
+		h.logger.Warn(
+			"模型后端流式请求失败",
+			"trace_id", tracing.TraceIDFromContext(r.Context()),
+			"backend", backend.cfg.Name,
+			"reason", reason,
+			"error", err,
+		)
 		return retryableAttempt(reason)
 	}
 	defer resp.Body.Close()
@@ -110,7 +118,8 @@ func (h *Handler) proxyOpenAICompatibleStream(
 	permit.Succeed()
 	return doneAttempt()
 }
-//读取流直到读取到第一个token
+
+// 读取流直到读取到第一个token
 func (h *Handler) readUntilFirstContentToken(ctx context.Context, reader *bufio.Reader, body io.Closer) ([]sseEvent, bool, error) {
 	buffered := make([]sseEvent, 0, 4)
 	for {
