@@ -65,8 +65,13 @@ func NewHandler(cfg config.AIConfig, logger *slog.Logger, metrics *observability
 }
 
 // Register 将 LLM 相关路由注册到 HTTP 多路复用器。
-func Register(mux *http.ServeMux, handler *Handler) {
-	mux.Handle("/v1/chat/completions", handler)
+func Register(mux *http.ServeMux, handler *Handler, chatMiddlewares ...func(http.Handler) http.Handler) {
+	chatHandler := http.Handler(handler)
+	for i := len(chatMiddlewares) - 1; i >= 0; i-- {
+		chatHandler = chatMiddlewares[i](chatHandler)
+	}
+
+	mux.Handle("/v1/chat/completions", chatHandler)
 	mux.HandleFunc("/v1/models", handler.ListModels)
 }
 

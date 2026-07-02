@@ -3,6 +3,8 @@ package config
 type Config struct {
 	Server        ServerConfig        `json:"server"`
 	Observability ObservabilityConfig `json:"observability"`
+	Auth          AuthConfig          `json:"auth"`
+	RateLimit     RateLimitConfig     `json:"rate_limit"`
 	AI            AIConfig            `json:"ai"`
 }
 
@@ -14,6 +16,17 @@ type ServerConfig struct {
 
 type ObservabilityConfig struct {
 	MetricsNamespace string `json:"metrics_namespace"`
+}
+
+type RateLimitConfig struct {
+	User UserRateLimitConfig `json:"user"`
+}
+
+type UserRateLimitConfig struct {
+	Enabled           bool    `json:"enabled"`
+	IdentityHeader    string  `json:"identity_header"`
+	RequestsPerSecond float64 `json:"requests_per_second"`
+	Burst             int     `json:"burst"`
 }
 
 type AIConfig struct {

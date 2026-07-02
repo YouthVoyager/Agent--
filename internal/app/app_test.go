@@ -142,6 +142,98 @@ func TestChatCompletionUnknownModel(t *testing.T) {
 	}
 }
 
+func TestUserRateLimitAppliesToChatCompletion(t *testing.T) {
+	cfg := config.Default()
+	cfg.Server.Address = "127.0.0.1:18080"
+	cfg.RateLimit.User.Enabled = true
+	cfg.RateLimit.User.IdentityHeader = "X-User-ID"
+	cfg.RateLimit.User.RequestsPerSecond = 0.01
+	cfg.RateLimit.User.Burst = 1
+	gateway := newTestAppWithConfig(t, cfg)
+
+	first := serveChatCompletion(t, gateway, "alice")
+	if first.Code != http.StatusOK {
+		t.Fatalf("first status = %d, want %d, body = %s", first.Code, http.StatusOK, first.Body.String())
+	}
+
+	second := serveChatCompletion(t, gateway, "alice")
+	if second.Code != http.StatusTooManyRequests {
+		t.Fatalf("second status = %d, want %d, body = %s", second.Code, http.StatusTooManyRequests, second.Body.String())
+	}
+	if second.Header().Get("Retry-After") == "" {
+		t.Fatal("聊天补全超限响应缺少 Retry-After")
+	}
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	gateway.Handler().ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("models status = %d, want %d", recorder.Code, http.StatusOK)
+	}
+}
+
+func TestAPIKeyAuthProtectsV1Routes(t *testing.T) {
+	cfg := config.Default()
+	cfg.Server.Address = "127.0.0.1:18080"
+	enableTestAPIKeyAuth(&cfg)
+	gateway := newTestAppWithConfig(t, cfg)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	gateway.Handler().ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusUnauthorized {
+		t.Fatalf("models status = %d, want %d", recorder.Code, http.StatusUnauthorized)
+	}
+
+	recorder = httptest.NewRecorder()
+	request = httptest.NewRequest(http.MethodGet, "/healthz", nil)
+	gateway.Handler().ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("healthz status = %d, want %d", recorder.Code, http.StatusOK)
+	}
+}
+
+func TestAPIKeyAuthAllowsV1Routes(t *testing.T) {
+	cfg := config.Default()
+	cfg.Server.Address = "127.0.0.1:18080"
+	enableTestAPIKeyAuth(&cfg)
+	gateway := newTestAppWithConfig(t, cfg)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	request.Header.Set("Authorization", "Bearer test-key")
+	gateway.Handler().ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("models status = %d, want %d, body = %s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+
+	recorder = serveAuthenticatedChatCompletion(t, gateway)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("chat status = %d, want %d, body = %s", recorder.Code, http.StatusOK, recorder.Body.String())
+	}
+}
+
+func TestUserRateLimitUsesAPIKeyIdentity(t *testing.T) {
+	cfg := config.Default()
+	cfg.Server.Address = "127.0.0.1:18080"
+	enableTestAPIKeyAuth(&cfg)
+	cfg.RateLimit.User.Enabled = true
+	cfg.RateLimit.User.IdentityHeader = "X-User-ID"
+	cfg.RateLimit.User.RequestsPerSecond = 0.01
+	cfg.RateLimit.User.Burst = 1
+	gateway := newTestAppWithConfig(t, cfg)
+
+	first := serveAuthenticatedChatCompletion(t, gateway)
+	if first.Code != http.StatusOK {
+		t.Fatalf("first status = %d, want %d, body = %s", first.Code, http.StatusOK, first.Body.String())
+	}
+
+	second := serveAuthenticatedChatCompletion(t, gateway)
+	if second.Code != http.StatusTooManyRequests {
+		t.Fatalf("second status = %d, want %d, body = %s", second.Code, http.StatusTooManyRequests, second.Body.String())
+	}
+}
+
 func TestListModels(t *testing.T) {
 	gateway := newTestApp(t)
 
@@ -157,6 +249,53 @@ func TestListModels(t *testing.T) {
 		if !strings.Contains(body, model) {
 			t.Fatalf("模型列表未包含 %q: %s", model, body)
 		}
+	}
+}
+
+func serveChatCompletion(t *testing.T, gateway *App, userID string) *httptest.ResponseRecorder {
+	t.Helper()
+
+	body := strings.NewReader(`{
+  "model": "mock-a",
+  "messages": [
+    {"role": "user", "content": "ping"}
+  ]
+}`)
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", body)
+	if userID != "" {
+		request.Header.Set("X-User-ID", userID)
+	}
+	gateway.Handler().ServeHTTP(recorder, request)
+	return recorder
+}
+
+func serveAuthenticatedChatCompletion(t *testing.T, gateway *App) *httptest.ResponseRecorder {
+	t.Helper()
+
+	recorder := httptest.NewRecorder()
+	body := strings.NewReader(`{
+  "model": "mock-a",
+  "messages": [
+    {"role": "user", "content": "ping"}
+  ]
+}`)
+	request := httptest.NewRequest(http.MethodPost, "/v1/chat/completions", body)
+	request.Header.Set("Authorization", "Bearer test-key")
+	gateway.Handler().ServeHTTP(recorder, request)
+	return recorder
+}
+
+func enableTestAPIKeyAuth(cfg *config.Config) {
+	cfg.Auth.APIKey.Enabled = true
+	cfg.Auth.APIKey.Keys = []config.APIKeyCredentialConfig{
+		{
+			ID:       "test-key",
+			KeyHash:  "sha256:62af8704764faf8ea82fc61ce9c4c3908b6cb97d463a634e9e587d7c885db0ef",
+			UserID:   "alice",
+			TenantID: "tenant-a",
+			Scopes:   []string{"chat:completions", "models:read"},
+		},
 	}
 }
 

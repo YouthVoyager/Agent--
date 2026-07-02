@@ -6,9 +6,11 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/agent-gateway/telemetry-gateway/internal/auth"
 	"github.com/agent-gateway/telemetry-gateway/internal/config"
 	"github.com/agent-gateway/telemetry-gateway/internal/llm"
 	"github.com/agent-gateway/telemetry-gateway/internal/observability"
+	"github.com/agent-gateway/telemetry-gateway/internal/ratelimit"
 )
 
 // App 表示遥测网关应用，负责持有配置、HTTP 服务与运行状态。
@@ -49,8 +51,24 @@ func New(cfg config.Config, logger *slog.Logger) (*App, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	var chatMiddlewares []func(http.Handler) http.Handler
+	if cfg.RateLimit.User.Enabled {
+		userLimiter := ratelimit.NewUserLimiter(cfg.RateLimit.User)
+		chatMiddlewares = append(chatMiddlewares, userLimiter.Middleware)
+	}
 	//注册api路由
-	llm.Register(mux, llmHandler)
+	if cfg.Auth.APIKey.Enabled {
+		authenticator, err := auth.NewAPIKeyAuthenticator(cfg.Auth.APIKey)
+		if err != nil {
+			return nil, err
+		}
+		llmMux := http.NewServeMux()
+		llm.Register(llmMux, llmHandler, chatMiddlewares...)
+		mux.Handle("/v1/", authenticator.Middleware(llmMux))
+	} else {
+		llm.Register(mux, llmHandler, chatMiddlewares...)
+	}
 	//注册观测器
 	observability.Register(mux, observability.State{
 		ServiceName:      "telemetry-gateway",

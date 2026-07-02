@@ -7,6 +7,21 @@
   "observability": {
     "metrics_namespace": "gateway"
   },
+  "auth": {
+    "api_key": {
+      "enabled": false,
+      "header": "Authorization",
+      "keys": []
+    }
+  },
+  "rate_limit": {
+    "user": {
+      "enabled": false,
+      "identity_header": "X-User-ID",
+      "requests_per_second": 1,
+      "burst": 1
+    }
+  },
   "ai": {
     "request_timeout": "30s",
     "backends": [

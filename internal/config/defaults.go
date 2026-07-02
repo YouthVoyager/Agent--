@@ -12,6 +12,20 @@ func Default() Config {
 		Observability: ObservabilityConfig{
 			MetricsNamespace: "gateway",
 		},
+		Auth: AuthConfig{
+			APIKey: APIKeyAuthConfig{
+				Enabled: false,
+				Header:  "Authorization",
+			},
+		},
+		RateLimit: RateLimitConfig{
+			User: UserRateLimitConfig{
+				Enabled:           false,
+				IdentityHeader:    "X-User-ID",
+				RequestsPerSecond: 1,
+				Burst:             1,
+			},
+		},
 		AI: AIConfig{
 			RequestTimeout: Duration{Duration: 30 * time.Second},
 			Backends: []ModelBackendConfig{

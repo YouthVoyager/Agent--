@@ -27,6 +27,7 @@ Tempo      Mimir      Datadog/其他
 - OpenAI 风格 `/v1/models` 与 `/v1/chat/completions` 接口；
 - 两个默认 mock 模型后端，可替换为 OpenAI 兼容真实服务；
 - `text/event-stream` SSE 流式输出；
+- 可配置的用户级请求限流；
 - `context.Context` 生命周期和 SIGTERM 优雅退出；
 - `/healthz`、`/readyz`、`/metrics`；
 - `/debug/pprof`；
@@ -108,6 +109,21 @@ make run
   "observability": {
     "metrics_namespace": "gateway"
   },
+  "auth": {
+    "api_key": {
+      "enabled": false,
+      "header": "Authorization",
+      "keys": []
+    }
+  },
+  "rate_limit": {
+    "user": {
+      "enabled": false,
+      "identity_header": "X-User-ID",
+      "requests_per_second": 1,
+      "burst": 1
+    }
+  },
   "ai": {
     "request_timeout": "30s",
     "backends": [
@@ -125,6 +141,56 @@ make run
   }
 }
 ```
+
+API Key 鉴权默认关闭。开启后，所有 `/v1/` 请求都需要携带 `Authorization: Bearer <api_key>`；`/healthz`、`/readyz`、`/metrics` 和 `/debug/pprof` 保持公开。配置中只保存 API Key 的 SHA-256 哈希：
+
+```bash
+printf 'dev-secret-key' | shasum -a 256
+```
+
+```json
+{
+  "auth": {
+    "api_key": {
+      "enabled": true,
+      "header": "Authorization",
+      "keys": [
+        {
+          "id": "dev-key",
+          "key_hash": "sha256:0537dfd229ccd644e29c82f0c27a1b3b075a1589fa75a186ed40abc25bfcd248",
+          "user_id": "dev-user",
+          "tenant_id": "dev",
+          "scopes": ["chat:completions", "models:read"]
+        }
+      ]
+    }
+  }
+}
+```
+
+启用后请求示例：
+
+```bash
+curl localhost:8080/v1/models \
+  -H 'Authorization: Bearer dev-secret-key'
+```
+
+用户级限流默认关闭。开启后，网关会使用 `identity_header` 指定的请求头作为用户标识，对 `/v1/chat/completions` 独立执行 token bucket 限流；缺少用户标识会返回 `401`，超出限流会返回 `429` 并携带 `Retry-After`：
+
+```json
+{
+  "rate_limit": {
+    "user": {
+      "enabled": true,
+      "identity_header": "X-User-ID",
+      "requests_per_second": 2,
+      "burst": 4
+    }
+  }
+}
+```
+
+如果同时启用 API Key 鉴权和用户级限流，限流会优先使用鉴权身份中的 `user_id`；未启用鉴权时才回退到 `identity_header`。
 
 真实模型服务可使用 OpenAI 兼容协议接入，`base_url` 可以是服务根地址或 `/v1` 地址：
 

@@ -32,6 +32,20 @@ func (c Config) Validate() error {
 	if strings.TrimSpace(c.Observability.MetricsNamespace) == "" {
 		return fmt.Errorf("observability.metrics_namespace 不能为空")
 	}
+	if err := validateAPIKeyAuth(c.Auth.APIKey); err != nil {
+		return err
+	}
+	if c.RateLimit.User.Enabled {
+		if strings.TrimSpace(c.RateLimit.User.IdentityHeader) == "" {
+			return fmt.Errorf("rate_limit.user.identity_header 不能为空")
+		}
+		if c.RateLimit.User.RequestsPerSecond <= 0 {
+			return fmt.Errorf("rate_limit.user.requests_per_second 必须大于 0")
+		}
+		if c.RateLimit.User.Burst <= 0 {
+			return fmt.Errorf("rate_limit.user.burst 必须大于 0")
+		}
+	}
 	if c.AI.RequestTimeout.Duration <= 0 {
 		return fmt.Errorf("ai.request_timeout 必须大于 0")
 	}
