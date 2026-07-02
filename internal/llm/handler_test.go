@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"github.com/agent-gateway/telemetry-gateway/internal/config"
+	"github.com/agent-gateway/telemetry-gateway/internal/observability"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
@@ -91,6 +92,12 @@ func TestOpenAICompatibleStreamProxy(t *testing.T) {
 func newProxyTestHandler(t *testing.T, transport http.RoundTripper) *Handler {
 	t.Helper()
 
+	return newProxyTestHandlerWithMetrics(t, transport, nil)
+}
+
+func newProxyTestHandlerWithMetrics(t *testing.T, transport http.RoundTripper, metrics *observability.Metrics) *Handler {
+	t.Helper()
+
 	handler, err := NewHandler(config.AIConfig{
 		RequestTimeout: config.Duration{Duration: 1},
 		Backends: []config.ModelBackendConfig{
@@ -107,7 +114,7 @@ func newProxyTestHandler(t *testing.T, transport http.RoundTripper) *Handler {
 				Models: []string{"mock-b"},
 			},
 		},
-	}, nil, nil)
+	}, nil, metrics)
 	if err != nil {
 		t.Fatalf("NewHandler() error = %v", err)
 	}

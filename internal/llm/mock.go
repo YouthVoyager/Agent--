@@ -9,8 +9,16 @@ import (
 )
 
 func (h *Handler) serveMock(w http.ResponseWriter, r *http.Request, req chatCompletionRequest, backend modelBackend) {
+	start := time.Now()
+	result := requestResultSuccess
+	defer func() {
+		h.observeBackendRequest(backend.cfg.Name, result, time.Since(start))
+	}()
+
 	if req.Stream {
-		h.streamMock(w, r, req, backend)
+		if ok := h.streamMock(w, r, req, backend); !ok {
+			result = requestResultFailure
+		}
 		return
 	}
 
@@ -41,11 +49,11 @@ func (h *Handler) serveMock(w http.ResponseWriter, r *http.Request, req chatComp
 	})
 }
 
-func (h *Handler) streamMock(w http.ResponseWriter, r *http.Request, req chatCompletionRequest, backend modelBackend) {
+func (h *Handler) streamMock(w http.ResponseWriter, r *http.Request, req chatCompletionRequest, backend modelBackend) bool {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		writeOpenAIError(w, http.StatusInternalServerError, "当前 HTTP writer 不支持流式刷新", "server_error", "")
-		return
+		return false
 	}
 
 	w.Header().Set("Content-Type", "text/event-stream; charset=utf-8")
@@ -71,13 +79,13 @@ func (h *Handler) streamMock(w http.ResponseWriter, r *http.Request, req chatCom
 			},
 		},
 	}) {
-		return
+		return false
 	}
 
 	for _, piece := range splitText(content, 12) {
 		select {
 		case <-r.Context().Done():
-			return
+			return false
 		default:
 		}
 
@@ -94,7 +102,7 @@ func (h *Handler) streamMock(w http.ResponseWriter, r *http.Request, req chatCom
 				},
 			},
 		}) {
-			return
+			return false
 		}
 	}
 
@@ -112,11 +120,14 @@ func (h *Handler) streamMock(w http.ResponseWriter, r *http.Request, req chatCom
 			},
 		},
 	}) {
-		return
+		return false
 	}
 
-	_, _ = io.WriteString(w, "data: [DONE]\n\n")
+	if _, err := io.WriteString(w, "data: [DONE]\n\n"); err != nil {
+		return false
+	}
 	flusher.Flush()
+	return true
 }
 
 func mockContent(req chatCompletionRequest, backend modelBackend) string {

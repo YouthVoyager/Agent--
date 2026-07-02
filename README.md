@@ -49,6 +49,12 @@ curl localhost:8080/readyz
 curl localhost:8080/metrics
 ```
 
+默认命名空间下，LLM 请求会暴露这些 Prometheus 指标：
+
+- `gateway_requests_total{backend,result}`：按后端和结果累计请求数；
+- `gateway_request_duration_seconds{backend,result}`：完整请求总延迟；
+- `gateway_request_success_rate{backend}`：进程启动以来的累计请求成功率，取值范围为 `0` 到 `1`。
+
 检查模型列表：
 
 ```bash

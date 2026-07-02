@@ -1,7 +1,7 @@
 package llm
 
 import "strings"
-
+//规范配置格式
 func normalizeBackendType(value string) string {
 	switch strings.ToLower(strings.TrimSpace(value)) {
 	case "openai", "openai_compatible", "openai-compatible":

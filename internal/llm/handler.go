@@ -15,7 +15,9 @@ import (
 
 const maxRequestBodyBytes = 10 << 20
 
+// Handler 处理 OpenAI 兼容的 LLM HTTP 请求。
 type Handler struct {
+	//处理器属性,包括配置以及依赖
 	logger   *slog.Logger
 	client   *http.Client
 	backends map[string]modelBackend
@@ -23,11 +25,12 @@ type Handler struct {
 	metrics  *observability.Metrics
 }
 
+// NewHandler 创建并初始化一个 LLM HTTP 处理器。
 func NewHandler(cfg config.AIConfig, logger *slog.Logger, metrics *observability.Metrics) (*Handler, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
-
+	//配置tcp超时
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.ResponseHeaderTimeout = cfg.RequestTimeout.Duration
 
@@ -37,7 +40,7 @@ func NewHandler(cfg config.AIConfig, logger *slog.Logger, metrics *observability
 		backends: make(map[string]modelBackend),
 		metrics:  metrics,
 	}
-
+	//读取配置
 	for _, backendCfg := range cfg.Backends {
 		backendType := normalizeBackendType(backendCfg.Type)
 		backend := modelBackend{
@@ -61,12 +64,15 @@ func NewHandler(cfg config.AIConfig, logger *slog.Logger, metrics *observability
 	return handler, nil
 }
 
+// Register 将 LLM 相关路由注册到 HTTP 多路复用器。
 func Register(mux *http.ServeMux, handler *Handler) {
 	mux.Handle("/v1/chat/completions", handler)
 	mux.HandleFunc("/v1/models", handler.ListModels)
 }
 
+// ServeHTTP 处理聊天补全请求并将请求路由到对应模型后端。
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	//异常检验
 	if r.Method != http.MethodPost {
 		w.Header().Set("Allow", http.MethodPost)
 		writeOpenAIError(w, http.StatusMethodNotAllowed, "仅支持 POST 方法", "invalid_request_error", "")
@@ -105,10 +111,11 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		h.serveMock(w, r, req, backend)
 		return
 	}
-
+	//调用AI客户端
 	h.proxyOpenAICompatible(w, r, rawBody, req, backend)
 }
 
+// ListModels 处理模型列表查询请求。
 func (h *Handler) ListModels(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		w.Header().Set("Allow", http.MethodGet)
