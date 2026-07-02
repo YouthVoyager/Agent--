@@ -22,6 +22,7 @@ type userBucket struct {
 
 // UserLimiter 按用户标识执行请求限流。
 type UserLimiter struct {
+	
 	identityHeader  string
 	requestLimit    rate.Limit
 	burst           int

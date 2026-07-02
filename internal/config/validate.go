@@ -46,6 +46,9 @@ func (c Config) Validate() error {
 			return fmt.Errorf("rate_limit.user.burst 必须大于 0")
 		}
 	}
+	if c.RateLimit.Concurrency.Enabled && c.RateLimit.Concurrency.MaxInFlight <= 0 {
+		return fmt.Errorf("rate_limit.concurrency.max_in_flight 必须大于 0")
+	}
 	if c.AI.RequestTimeout.Duration <= 0 {
 		return fmt.Errorf("ai.request_timeout 必须大于 0")
 	}

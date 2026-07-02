@@ -26,7 +26,7 @@ func (l *UserLimiter) Middleware(next http.Handler) http.Handler {
 			)
 			return
 		}
-
+		//创建限流器,如果允许就进入下一个处理器
 		limiter := l.bucket(identity)
 		if limiter.Allow() {
 			next.ServeHTTP(w, r)

@@ -28,6 +28,7 @@ Tempo      Mimir      Datadog/其他
 - 两个默认 mock 模型后端，可替换为 OpenAI 兼容真实服务；
 - `text/event-stream` SSE 流式输出；
 - 可配置的用户级请求限流；
+- 可配置的聊天补全全局并发限制；
 - `context.Context` 生命周期和 SIGTERM 优雅退出；
 - `/healthz`、`/readyz`、`/metrics`；
 - `/debug/pprof`；
@@ -122,6 +123,10 @@ make run
       "identity_header": "X-User-ID",
       "requests_per_second": 1,
       "burst": 1
+    },
+    "concurrency": {
+      "enabled": false,
+      "max_in_flight": 100
     }
   },
   "ai": {
@@ -191,6 +196,19 @@ curl localhost:8080/v1/models \
 ```
 
 如果同时启用 API Key 鉴权和用户级限流，限流会优先使用鉴权身份中的 `user_id`；未启用鉴权时才回退到 `identity_header`。
+
+聊天补全全局并发限制默认关闭。开启后，网关会限制同时处理中的 `/v1/chat/completions` 请求数量；超过 `max_in_flight` 会返回 `429` 并携带 `Retry-After`。`/v1/models`、健康检查和指标接口不受影响：
+
+```json
+{
+  "rate_limit": {
+    "concurrency": {
+      "enabled": true,
+      "max_in_flight": 100
+    }
+  }
+}
+```
 
 真实模型服务可使用 OpenAI 兼容协议接入，`base_url` 可以是服务根地址或 `/v1` 地址：
 

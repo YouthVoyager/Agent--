@@ -6,7 +6,9 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 
 	"github.com/agent-gateway/telemetry-gateway/internal/config"
 )
@@ -172,6 +174,84 @@ func TestUserRateLimitAppliesToChatCompletion(t *testing.T) {
 	}
 }
 
+func TestConcurrencyLimitAppliesToChatCompletion(t *testing.T) {
+	upstreamStarted := make(chan struct{})
+	releaseUpstream := make(chan struct{})
+	var startedOnce sync.Once
+	var releaseOnce sync.Once
+
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		startedOnce.Do(func() {
+			close(upstreamStarted)
+		})
+		<-releaseUpstream
+
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"id":"chatcmpl-test","object":"chat.completion","created":1,"model":"blocked-model","choices":[],"usage":{"prompt_tokens":0,"completion_tokens":0,"total_tokens":0}}`)
+	}))
+	defer upstream.Close()
+	defer releaseOnce.Do(func() {
+		close(releaseUpstream)
+	})
+
+	cfg := config.Default()
+	cfg.Server.Address = "127.0.0.1:18080"
+	cfg.RateLimit.Concurrency.Enabled = true
+	cfg.RateLimit.Concurrency.MaxInFlight = 1
+	cfg.AI.Backends = []config.ModelBackendConfig{
+		{
+			Name:    "blocked",
+			Type:    "openai",
+			BaseURL: upstream.URL,
+			Models:  []string{"blocked-model"},
+		},
+		{
+			Name:   "mock-b",
+			Type:   "mock",
+			Models: []string{"mock-b"},
+		},
+	}
+	gateway := newTestAppWithConfig(t, cfg)
+
+	firstDone := make(chan *httptest.ResponseRecorder, 1)
+	go func() {
+		firstDone <- serveChatCompletionWithModel(gateway, "blocked-model", "")
+	}()
+
+	select {
+	case <-upstreamStarted:
+	case <-time.After(time.Second):
+		t.Fatal("等待阻塞上游请求超时")
+	}
+
+	second := serveChatCompletionWithModel(gateway, "blocked-model", "")
+	if second.Code != http.StatusTooManyRequests {
+		t.Fatalf("second status = %d, want %d, body = %s", second.Code, http.StatusTooManyRequests, second.Body.String())
+	}
+	if second.Header().Get("Retry-After") == "" {
+		t.Fatal("聊天补全并发超限响应缺少 Retry-After")
+	}
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	gateway.Handler().ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("models status = %d, want %d", recorder.Code, http.StatusOK)
+	}
+
+	releaseOnce.Do(func() {
+		close(releaseUpstream)
+	})
+	select {
+	case first := <-firstDone:
+		if first.Code != http.StatusOK {
+			t.Fatalf("first status = %d, want %d, body = %s", first.Code, http.StatusOK, first.Body.String())
+		}
+	case <-time.After(time.Second):
+		t.Fatal("等待第一个聊天请求完成超时")
+	}
+}
+
 func TestAPIKeyAuthProtectsV1Routes(t *testing.T) {
 	cfg := config.Default()
 	cfg.Server.Address = "127.0.0.1:18080"
@@ -255,8 +335,12 @@ func TestListModels(t *testing.T) {
 func serveChatCompletion(t *testing.T, gateway *App, userID string) *httptest.ResponseRecorder {
 	t.Helper()
 
+	return serveChatCompletionWithModel(gateway, "mock-a", userID)
+}
+
+func serveChatCompletionWithModel(gateway *App, model string, userID string) *httptest.ResponseRecorder {
 	body := strings.NewReader(`{
-  "model": "mock-a",
+  "model": "` + model + `",
   "messages": [
     {"role": "user", "content": "ping"}
   ]

@@ -19,7 +19,8 @@ type ObservabilityConfig struct {
 }
 
 type RateLimitConfig struct {
-	User UserRateLimitConfig `json:"user"`
+	User        UserRateLimitConfig    `json:"user"`
+	Concurrency ConcurrencyLimitConfig `json:"concurrency"`
 }
 
 type UserRateLimitConfig struct {
@@ -27,6 +28,11 @@ type UserRateLimitConfig struct {
 	IdentityHeader    string  `json:"identity_header"`
 	RequestsPerSecond float64 `json:"requests_per_second"`
 	Burst             int     `json:"burst"`
+}
+
+type ConcurrencyLimitConfig struct {
+	Enabled     bool `json:"enabled"`
+	MaxInFlight int  `json:"max_in_flight"`
 }
 
 type AIConfig struct {

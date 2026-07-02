@@ -20,6 +20,10 @@
       "identity_header": "X-User-ID",
       "requests_per_second": 1,
       "burst": 1
+    },
+    "concurrency": {
+      "enabled": false,
+      "max_in_flight": 100
     }
   },
   "ai": {

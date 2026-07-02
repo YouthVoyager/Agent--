@@ -26,6 +26,12 @@ func TestLoadDefault(t *testing.T) {
 	if cfg.RateLimit.User.Enabled {
 		t.Fatal("默认用户级限流应关闭")
 	}
+	if cfg.RateLimit.Concurrency.Enabled {
+		t.Fatal("默认并发限制应关闭")
+	}
+	if cfg.RateLimit.Concurrency.MaxInFlight != 100 {
+		t.Fatalf("默认最大并发 = %d, want 100", cfg.RateLimit.Concurrency.MaxInFlight)
+	}
 	if cfg.Auth.APIKey.Enabled {
 		t.Fatal("默认 API Key 鉴权应关闭")
 	}
@@ -108,6 +114,37 @@ func TestLoadFileUserRateLimit(t *testing.T) {
 	}
 }
 
+func TestLoadFileConcurrencyLimit(t *testing.T) {
+	t.Setenv("GATEWAY_CONFIG", "")
+	t.Setenv("GATEWAY_ADDRESS", "")
+	t.Setenv("GATEWAY_ADDR", "")
+
+	path := filepath.Join(t.TempDir(), "gateway.json")
+	data := []byte(`{
+  "rate_limit": {
+    "concurrency": {
+      "enabled": true,
+      "max_in_flight": 8
+    }
+  }
+}`)
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatalf("写入测试配置失败: %v", err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if !cfg.RateLimit.Concurrency.Enabled {
+		t.Fatal("并发限制未启用")
+	}
+	if cfg.RateLimit.Concurrency.MaxInFlight != 8 {
+		t.Fatalf("max_in_flight = %d", cfg.RateLimit.Concurrency.MaxInFlight)
+	}
+}
+
 func TestLoadFileAPIKeyAuth(t *testing.T) {
 	t.Setenv("GATEWAY_CONFIG", "")
 	t.Setenv("GATEWAY_ADDRESS", "")
@@ -178,6 +215,16 @@ func TestValidateRejectsInvalidUserRateLimit(t *testing.T) {
 
 	if err := cfg.Validate(); err == nil {
 		t.Fatal("Validate() error = nil, want invalid user rate limit error")
+	}
+}
+
+func TestValidateRejectsInvalidConcurrencyLimit(t *testing.T) {
+	cfg := Default()
+	cfg.RateLimit.Concurrency.Enabled = true
+	cfg.RateLimit.Concurrency.MaxInFlight = 0
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() error = nil, want invalid concurrency limit error")
 	}
 }
 

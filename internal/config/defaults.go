@@ -25,6 +25,10 @@ func Default() Config {
 				RequestsPerSecond: 1,
 				Burst:             1,
 			},
+			Concurrency: ConcurrencyLimitConfig{
+				Enabled:     false,
+				MaxInFlight: 100,
+			},
 		},
 		AI: AIConfig{
 			RequestTimeout: Duration{Duration: 30 * time.Second},

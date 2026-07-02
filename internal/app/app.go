@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/agent-gateway/telemetry-gateway/internal/auth"
+	"github.com/agent-gateway/telemetry-gateway/internal/concurrency"
 	"github.com/agent-gateway/telemetry-gateway/internal/config"
 	"github.com/agent-gateway/telemetry-gateway/internal/llm"
 	"github.com/agent-gateway/telemetry-gateway/internal/observability"
@@ -56,6 +57,10 @@ func New(cfg config.Config, logger *slog.Logger) (*App, error) {
 	if cfg.RateLimit.User.Enabled {
 		userLimiter := ratelimit.NewUserLimiter(cfg.RateLimit.User)
 		chatMiddlewares = append(chatMiddlewares, userLimiter.Middleware)
+	}
+	if cfg.RateLimit.Concurrency.Enabled {
+		concurrencyLimiter := concurrency.NewLimiter(cfg.RateLimit.Concurrency)
+		chatMiddlewares = append(chatMiddlewares, concurrencyLimiter.Middleware)
 	}
 	//注册api路由
 	if cfg.Auth.APIKey.Enabled {
