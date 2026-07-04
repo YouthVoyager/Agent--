@@ -49,6 +49,9 @@ func (c Config) Validate() error {
 	if c.RateLimit.Concurrency.Enabled && c.RateLimit.Concurrency.MaxInFlight <= 0 {
 		return fmt.Errorf("rate_limit.concurrency.max_in_flight 必须大于 0")
 	}
+	if err := validateTokenUsage(c.TokenUsage); err != nil {
+		return err
+	}
 	if c.AI.RequestTimeout.Duration <= 0 {
 		return fmt.Errorf("ai.request_timeout 必须大于 0")
 	}
@@ -112,6 +115,33 @@ func (c Config) Validate() error {
 		return err
 	}
 
+	return nil
+}
+
+func validateTokenUsage(cfg TokenUsageConfig) error {
+	if !cfg.Enabled {
+		return nil
+	}
+	if strings.TrimSpace(cfg.IdentityHeader) == "" {
+		return fmt.Errorf("token_usage.identity_header 不能为空")
+	}
+	if cfg.Window.Duration <= 0 {
+		return fmt.Errorf("token_usage.window 必须大于 0")
+	}
+	if cfg.DefaultBudgetTokens <= 0 {
+		return fmt.Errorf("token_usage.default_budget_tokens 必须大于 0")
+	}
+	if cfg.DefaultMaxCompletionTokens < 0 {
+		return fmt.Errorf("token_usage.default_max_completion_tokens 不能小于 0")
+	}
+	for identity, budget := range cfg.UserBudgets {
+		if strings.TrimSpace(identity) == "" {
+			return fmt.Errorf("token_usage.user_budgets 包含空用户标识")
+		}
+		if budget <= 0 {
+			return fmt.Errorf("token_usage.user_budgets[%q] 必须大于 0", identity)
+		}
+	}
 	return nil
 }
 

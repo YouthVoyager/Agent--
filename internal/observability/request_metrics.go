@@ -1,6 +1,7 @@
 package observability
 
 import (
+	"strconv"
 	"sync"
 	"time"
 )
@@ -85,4 +86,37 @@ func (m *Metrics) SetCircuitBreakerState(backend string, state float64) {
 		return
 	}
 	m.CircuitBreakerState.WithLabelValues(backend).Set(state)
+}
+
+func (m *Metrics) ObserveTokenUsage(identity, model string, promptTokens, completionTokens, totalTokens int, estimated bool) {
+	if m == nil || m.TokenUsageTotal == nil {
+		return
+	}
+	estimatedValue := strconv.FormatBool(estimated)
+	if promptTokens > 0 {
+		m.TokenUsageTotal.WithLabelValues(identity, model, "prompt", estimatedValue).Add(float64(promptTokens))
+	}
+	if completionTokens > 0 {
+		m.TokenUsageTotal.WithLabelValues(identity, model, "completion", estimatedValue).Add(float64(completionTokens))
+	}
+	if totalTokens > 0 {
+		m.TokenUsageTotal.WithLabelValues(identity, model, "total", estimatedValue).Add(float64(totalTokens))
+	}
+}
+
+func (m *Metrics) SetTokenBudgetRemaining(identity string, remainingTokens int) {
+	if m == nil || m.TokenBudgetRemaining == nil {
+		return
+	}
+	if remainingTokens < 0 {
+		remainingTokens = 0
+	}
+	m.TokenBudgetRemaining.WithLabelValues(identity).Set(float64(remainingTokens))
+}
+
+func (m *Metrics) ObserveTokenBudgetRejected(identity, model string) {
+	if m == nil || m.TokenBudgetRejectedTotal == nil {
+		return
+	}
+	m.TokenBudgetRejectedTotal.WithLabelValues(identity, model).Inc()
 }

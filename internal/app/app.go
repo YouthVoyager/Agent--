@@ -12,6 +12,7 @@ import (
 	"github.com/agent-gateway/telemetry-gateway/internal/llm"
 	"github.com/agent-gateway/telemetry-gateway/internal/observability"
 	"github.com/agent-gateway/telemetry-gateway/internal/ratelimit"
+	"github.com/agent-gateway/telemetry-gateway/internal/tokenusage"
 	"github.com/agent-gateway/telemetry-gateway/internal/tracing"
 )
 
@@ -58,6 +59,10 @@ func New(cfg config.Config, logger *slog.Logger) (*App, error) {
 	if cfg.RateLimit.User.Enabled {
 		userLimiter := ratelimit.NewUserLimiter(cfg.RateLimit.User)
 		chatMiddlewares = append(chatMiddlewares, userLimiter.Middleware)
+	}
+	if cfg.TokenUsage.Enabled {
+		tokenUsageController := tokenusage.NewController(cfg.TokenUsage, metrics)
+		chatMiddlewares = append(chatMiddlewares, tokenUsageController.Middleware)
 	}
 	if cfg.RateLimit.Concurrency.Enabled {
 		concurrencyLimiter := concurrency.NewLimiter(cfg.RateLimit.Concurrency)

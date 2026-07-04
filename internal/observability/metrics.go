@@ -26,6 +26,12 @@ type Metrics struct {
 	UpstreamErrorsTotal *prometheus.CounterVec
 	// CircuitBreakerState 记录每个后端的熔断状态。
 	CircuitBreakerState *prometheus.GaugeVec
+	// TokenUsageTotal 记录按身份、模型和类型拆分的 token 用量。
+	TokenUsageTotal *prometheus.CounterVec
+	// TokenBudgetRemaining 记录每个身份当前预算窗口的剩余 token。
+	TokenBudgetRemaining *prometheus.GaugeVec
+	// TokenBudgetRejectedTotal 记录因 token 预算不足而拒绝的请求数。
+	TokenBudgetRejectedTotal *prometheus.CounterVec
 
 	requestStats *requestMetricStats
 }
@@ -115,6 +121,33 @@ func NewMetrics(namespace string, ready func() bool) *Metrics {
 			[]string{"backend"},
 		),
 
+		TokenUsageTotal: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: namespace,
+				Name:      "token_usage_total",
+				Help:      "Total token usage by identity, model, token type and whether it is estimated.",
+			},
+			[]string{"identity", "model", "type", "estimated"},
+		),
+
+		TokenBudgetRemaining: prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Namespace: namespace,
+				Name:      "token_budget_remaining",
+				Help:      "Remaining tokens in the current budget window by identity.",
+			},
+			[]string{"identity"},
+		),
+
+		TokenBudgetRejectedTotal: prometheus.NewCounterVec(
+			prometheus.CounterOpts{
+				Namespace: namespace,
+				Name:      "token_budget_rejected_total",
+				Help:      "Total number of requests rejected because token budget is insufficient.",
+			},
+			[]string{"identity", "model"},
+		),
+
 		requestStats: newRequestMetricStats(),
 	}
 
@@ -125,6 +158,9 @@ func NewMetrics(namespace string, ready func() bool) *Metrics {
 		metrics.RequestDuration,
 		metrics.RequestSuccessRate,
 		metrics.RequestsTotal,
+		metrics.TokenBudgetRejectedTotal,
+		metrics.TokenBudgetRemaining,
+		metrics.TokenUsageTotal,
 		metrics.UpstreamErrorsTotal,
 		prometheus.NewGaugeFunc(prometheus.GaugeOpts{
 			Namespace: namespace,

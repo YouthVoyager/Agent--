@@ -32,6 +32,21 @@ func TestLoadDefault(t *testing.T) {
 	if cfg.RateLimit.Concurrency.MaxInFlight != 100 {
 		t.Fatalf("默认最大并发 = %d, want 100", cfg.RateLimit.Concurrency.MaxInFlight)
 	}
+	if cfg.TokenUsage.Enabled {
+		t.Fatal("默认 token 用量预算控制应关闭")
+	}
+	if cfg.TokenUsage.IdentityHeader != "X-User-ID" {
+		t.Fatalf("默认 token 用量身份请求头 = %q, want X-User-ID", cfg.TokenUsage.IdentityHeader)
+	}
+	if cfg.TokenUsage.Window.Duration != 24*time.Hour {
+		t.Fatalf("默认 token 预算窗口 = %s, want 24h", cfg.TokenUsage.Window.Duration)
+	}
+	if cfg.TokenUsage.DefaultBudgetTokens != 100000 {
+		t.Fatalf("默认 token 预算 = %d, want 100000", cfg.TokenUsage.DefaultBudgetTokens)
+	}
+	if cfg.TokenUsage.DefaultMaxCompletionTokens != 1024 {
+		t.Fatalf("默认 token 输出预留 = %d, want 1024", cfg.TokenUsage.DefaultMaxCompletionTokens)
+	}
 	if cfg.Auth.APIKey.Enabled {
 		t.Fatal("默认 API Key 鉴权应关闭")
 	}
@@ -160,6 +175,53 @@ func TestLoadFileConcurrencyLimit(t *testing.T) {
 	}
 }
 
+func TestLoadFileTokenUsage(t *testing.T) {
+	t.Setenv("GATEWAY_CONFIG", "")
+	t.Setenv("GATEWAY_ADDRESS", "")
+	t.Setenv("GATEWAY_ADDR", "")
+
+	path := filepath.Join(t.TempDir(), "gateway.json")
+	data := []byte(`{
+  "token_usage": {
+    "enabled": true,
+    "identity_header": "X-Account-ID",
+    "window": "1h",
+    "default_budget_tokens": 1000,
+    "default_max_completion_tokens": 128,
+    "user_budgets": {
+      "alice": 2000
+    }
+  }
+}`)
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatalf("写入测试配置失败: %v", err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	if !cfg.TokenUsage.Enabled {
+		t.Fatal("token 用量预算控制未启用")
+	}
+	if cfg.TokenUsage.IdentityHeader != "X-Account-ID" {
+		t.Fatalf("identity_header = %q", cfg.TokenUsage.IdentityHeader)
+	}
+	if cfg.TokenUsage.Window.Duration != time.Hour {
+		t.Fatalf("window = %s", cfg.TokenUsage.Window.Duration)
+	}
+	if cfg.TokenUsage.DefaultBudgetTokens != 1000 {
+		t.Fatalf("default_budget_tokens = %d", cfg.TokenUsage.DefaultBudgetTokens)
+	}
+	if cfg.TokenUsage.DefaultMaxCompletionTokens != 128 {
+		t.Fatalf("default_max_completion_tokens = %d", cfg.TokenUsage.DefaultMaxCompletionTokens)
+	}
+	if cfg.TokenUsage.UserBudgets["alice"] != 2000 {
+		t.Fatalf("alice budget = %d", cfg.TokenUsage.UserBudgets["alice"])
+	}
+}
+
 func TestLoadFileTracingDisabled(t *testing.T) {
 	t.Setenv("GATEWAY_CONFIG", "")
 	t.Setenv("GATEWAY_ADDRESS", "")
@@ -267,6 +329,16 @@ func TestValidateRejectsInvalidConcurrencyLimit(t *testing.T) {
 
 	if err := cfg.Validate(); err == nil {
 		t.Fatal("Validate() error = nil, want invalid concurrency limit error")
+	}
+}
+
+func TestValidateRejectsInvalidTokenUsage(t *testing.T) {
+	cfg := Default()
+	cfg.TokenUsage.Enabled = true
+	cfg.TokenUsage.DefaultBudgetTokens = 0
+
+	if err := cfg.Validate(); err == nil {
+		t.Fatal("Validate() error = nil, want invalid token usage error")
 	}
 }
 

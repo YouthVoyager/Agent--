@@ -5,6 +5,7 @@ type Config struct {
 	Observability ObservabilityConfig `json:"observability"`
 	Auth          AuthConfig          `json:"auth"`
 	RateLimit     RateLimitConfig     `json:"rate_limit"`
+	TokenUsage    TokenUsageConfig    `json:"token_usage"`
 	AI            AIConfig            `json:"ai"`
 }
 
@@ -38,6 +39,15 @@ type UserRateLimitConfig struct {
 type ConcurrencyLimitConfig struct {
 	Enabled     bool `json:"enabled"`
 	MaxInFlight int  `json:"max_in_flight"`
+}
+
+type TokenUsageConfig struct {
+	Enabled                    bool           `json:"enabled"`
+	IdentityHeader             string         `json:"identity_header"`
+	Window                     Duration       `json:"window"`
+	DefaultBudgetTokens        int            `json:"default_budget_tokens"`
+	DefaultMaxCompletionTokens int            `json:"default_max_completion_tokens"`
+	UserBudgets                map[string]int `json:"user_budgets"`
 }
 
 type AIConfig struct {

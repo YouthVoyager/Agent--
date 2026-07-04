@@ -33,6 +33,14 @@ func Default() Config {
 				MaxInFlight: 100,
 			},
 		},
+		TokenUsage: TokenUsageConfig{
+			Enabled:                    false,
+			IdentityHeader:             "X-User-ID",
+			Window:                     Duration{Duration: 24 * time.Hour},
+			DefaultBudgetTokens:        100000,
+			DefaultMaxCompletionTokens: 1024,
+			UserBudgets:                map[string]int{},
+		},
 		AI: AIConfig{
 			RequestTimeout:    Duration{Duration: 30 * time.Second},
 			FirstTokenTimeout: Duration{Duration: 30 * time.Second},

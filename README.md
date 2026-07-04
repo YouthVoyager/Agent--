@@ -29,6 +29,7 @@ Tempo      Mimir      Datadog/其他
 - `text/event-stream` SSE 流式输出；
 - 可配置的用户级请求限流；
 - 可配置的聊天补全全局并发限制；
+- 可配置的 token 用量统计和预算控制；
 - 上游超时、熔断和模型降级；
 - 请求链路追踪，支持 `traceparent` 与 `X-Trace-ID` 透传；
 - `context.Context` 生命周期和 SIGTERM 优雅退出；
@@ -63,7 +64,10 @@ LLM 请求会暴露这些 Prometheus 指标：
 - `aegis_first_token_duration_seconds{model}`：流式响应首个内容 token 延迟；
 - `gateway_fallbacks_total{from_model,to_model,reason}`：模型降级次数；
 - `gateway_upstream_errors_total{backend,reason}`：可触发容错的上游错误次数；
-- `gateway_circuit_breaker_state{backend}`：后端熔断状态，`0` 表示关闭、`1` 表示半开、`2` 表示打开。
+- `gateway_circuit_breaker_state{backend}`：后端熔断状态，`0` 表示关闭、`1` 表示半开、`2` 表示打开；
+- `gateway_token_usage_total{identity,model,type,estimated}`：按身份、模型和 token 类型统计用量；
+- `gateway_token_budget_remaining{identity}`：当前预算窗口内的剩余 token；
+- `gateway_token_budget_rejected_total{identity,model}`：因 token 预算不足被拒绝的请求数。
 
 检查模型列表：
 
@@ -139,6 +143,14 @@ make run
       "enabled": false,
       "max_in_flight": 100
     }
+  },
+  "token_usage": {
+    "enabled": false,
+    "identity_header": "X-User-ID",
+    "window": "24h",
+    "default_budget_tokens": 100000,
+    "default_max_completion_tokens": 1024,
+    "user_budgets": {}
   },
   "ai": {
     "request_timeout": "30s",
@@ -240,6 +252,25 @@ curl localhost:8080/v1/models \
   }
 }
 ```
+
+Token 用量预算默认关闭。开启后，网关会对 `/v1/chat/completions` 按身份维护固定时间窗口预算：请求进入时先按 prompt 估算和 `max_tokens` / `max_completion_tokens` 预留 token，响应完成后优先使用 OpenAI `usage.total_tokens` 修正；流式响应没有 usage 时会按 delta 文本估算输出 token。预算不足会返回 `429` 并携带 `Retry-After`：
+
+```json
+{
+  "token_usage": {
+    "enabled": true,
+    "identity_header": "X-User-ID",
+    "window": "24h",
+    "default_budget_tokens": 100000,
+    "default_max_completion_tokens": 1024,
+    "user_budgets": {
+      "alice": 200000
+    }
+  }
+}
+```
+
+如果同时启用 API Key 鉴权，token 预算会优先使用鉴权身份中的 `user_id`；未启用鉴权时才回退到 `identity_header`。`default_max_completion_tokens` 用于客户端未显式传入最大输出 token 时的保守预留，以避免并发请求突破预算。
 
 模型代理支持上游超时、按后端熔断和按模型链路降级：
 

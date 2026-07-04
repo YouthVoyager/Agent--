@@ -361,6 +361,59 @@ func TestConcurrencyLimitAppliesToChatCompletion(t *testing.T) {
 	}
 }
 
+func TestTokenUsageBudgetAppliesToChatCompletion(t *testing.T) {
+	cfg := config.Default()
+	cfg.Server.Address = "127.0.0.1:18080"
+	cfg.TokenUsage.Enabled = true
+	cfg.TokenUsage.IdentityHeader = "X-User-ID"
+	cfg.TokenUsage.Window = config.Duration{Duration: time.Hour}
+	cfg.TokenUsage.DefaultBudgetTokens = 10
+	cfg.TokenUsage.DefaultMaxCompletionTokens = 1
+	gateway := newTestAppWithConfig(t, cfg)
+
+	first := serveChatCompletion(t, gateway, "alice")
+	if first.Code != http.StatusOK {
+		t.Fatalf("first status = %d, want %d, body = %s", first.Code, http.StatusOK, first.Body.String())
+	}
+
+	second := serveChatCompletion(t, gateway, "alice")
+	if second.Code != http.StatusTooManyRequests {
+		t.Fatalf("second status = %d, want %d, body = %s", second.Code, http.StatusTooManyRequests, second.Body.String())
+	}
+	if second.Header().Get("Retry-After") == "" {
+		t.Fatal("token 预算超限响应缺少 Retry-After")
+	}
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	gateway.Handler().ServeHTTP(recorder, request)
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("models status = %d, want %d", recorder.Code, http.StatusOK)
+	}
+}
+
+func TestTokenUsageBudgetUsesAPIKeyIdentity(t *testing.T) {
+	cfg := config.Default()
+	cfg.Server.Address = "127.0.0.1:18080"
+	enableTestAPIKeyAuth(&cfg)
+	cfg.TokenUsage.Enabled = true
+	cfg.TokenUsage.IdentityHeader = "X-User-ID"
+	cfg.TokenUsage.Window = config.Duration{Duration: time.Hour}
+	cfg.TokenUsage.DefaultBudgetTokens = 10
+	cfg.TokenUsage.DefaultMaxCompletionTokens = 1
+	gateway := newTestAppWithConfig(t, cfg)
+
+	first := serveAuthenticatedChatCompletion(t, gateway)
+	if first.Code != http.StatusOK {
+		t.Fatalf("first status = %d, want %d, body = %s", first.Code, http.StatusOK, first.Body.String())
+	}
+
+	second := serveAuthenticatedChatCompletion(t, gateway)
+	if second.Code != http.StatusTooManyRequests {
+		t.Fatalf("second status = %d, want %d, body = %s", second.Code, http.StatusTooManyRequests, second.Body.String())
+	}
+}
+
 func TestAPIKeyAuthProtectsV1Routes(t *testing.T) {
 	cfg := config.Default()
 	cfg.Server.Address = "127.0.0.1:18080"

@@ -29,6 +29,14 @@
       "max_in_flight": 100
     }
   },
+  "token_usage": {
+    "enabled": false,
+    "identity_header": "X-User-ID",
+    "window": "24h",
+    "default_budget_tokens": 100000,
+    "default_max_completion_tokens": 1024,
+    "user_budgets": {}
+  },
   "ai": {
     "request_timeout": "30s",
     "first_token_timeout": "30s",
