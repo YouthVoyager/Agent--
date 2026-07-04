@@ -33,6 +33,7 @@ Tempo      Mimir      Datadog/其他
 - 上游超时、熔断和模型降级；
 - 请求链路追踪，支持 `traceparent` 与 `X-Trace-ID` 透传；
 - `context.Context` 生命周期和 SIGTERM 优雅退出；
+- 内置 React 管理页面 `/admin/`；
 - `/healthz`、`/readyz`、`/metrics`；
 - `/debug/pprof`；
 - `Makefile`、`Dockerfile`、CI；
@@ -53,6 +54,8 @@ curl localhost:8080/healthz
 curl localhost:8080/readyz
 curl localhost:8080/metrics
 ```
+
+浏览器访问 `http://localhost:8080/admin/` 可打开管理页面。页面会读取健康状态、就绪状态、Prometheus 指标和模型列表；开启 API Key 鉴权时，可在页面右侧填写访问凭据。
 
 默认启用请求链路追踪。网关会优先延续入站 `traceparent`，其次使用合法的 `X-Trace-ID` / `X-Request-ID`，都不存在时生成新的 trace id。每个响应都会带上 `Traceparent`、`X-Trace-ID` 和 `X-Request-ID`，代理到上游模型服务时也会透传同一 trace id 并创建新的子 span。访问日志会记录 `trace_id`、`span_id`、HTTP 方法、路径、状态码、响应字节数和耗时。
 

@@ -6,6 +6,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/agent-gateway/telemetry-gateway/internal/admin"
 	"github.com/agent-gateway/telemetry-gateway/internal/auth"
 	"github.com/agent-gateway/telemetry-gateway/internal/concurrency"
 	"github.com/agent-gateway/telemetry-gateway/internal/config"
@@ -89,6 +90,8 @@ func New(cfg config.Config, logger *slog.Logger) (*App, error) {
 			return gateway.ready.Load()
 		},
 	}, metrics)
+	//注册管理页面
+	admin.Register(mux)
 
 	var rootHandler http.Handler = mux
 	if cfg.Observability.Tracing.Enabled {

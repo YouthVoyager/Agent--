@@ -66,6 +66,21 @@ func TestMetrics(t *testing.T) {
 	}
 }
 
+func TestAdminPage(t *testing.T) {
+	gateway := newTestApp(t)
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/admin/", nil)
+	gateway.Handler().ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want %d", recorder.Code, http.StatusOK)
+	}
+	if !strings.Contains(recorder.Body.String(), "Agent 网关管理") {
+		t.Fatalf("响应体未包含管理页面标题: %s", recorder.Body.String())
+	}
+}
+
 func TestTracingAddsResponseHeaders(t *testing.T) {
 	gateway := newTestApp(t)
 
