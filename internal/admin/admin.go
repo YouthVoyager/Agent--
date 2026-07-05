@@ -6,13 +6,21 @@ import (
 	"net/http"
 	"path"
 	"strings"
+
+	"github.com/agent-gateway/telemetry-gateway/internal/config"
 )
 
 //go:embed static
 var staticFiles embed.FS
 
-// Register 注册管理页面静态资源路由。
-func Register(mux *http.ServeMux) {
+// Register 注册管理页面静态资源路由和管理 API。
+func Register(mux *http.ServeMux, stacks ...config.ObservabilityStack) {
+	var stack config.ObservabilityStack
+	if len(stacks) > 0 {
+		stack = stacks[0]
+	}
+
+	mux.HandleFunc("/admin/api/observability", ObservabilityHandler(stack))
 	mux.Handle("/admin", http.RedirectHandler("/admin/", http.StatusMovedPermanently))
 	mux.Handle("/admin/", http.StripPrefix("/admin/", Handler()))
 }

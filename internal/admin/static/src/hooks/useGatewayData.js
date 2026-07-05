@@ -14,11 +14,12 @@ export function useGatewayData(apiKey) {
     }));
 
     const client = createGatewayClient({ apiKey });
-    const [health, readiness, models, metrics] = await Promise.allSettled([
+    const [health, readiness, models, metrics, observability] = await Promise.allSettled([
       client.getHealth(),
       client.getReady(),
       client.getModels(),
       client.getMetrics(),
+      client.getObservability(),
     ]);
 
     const nextData = {
@@ -26,9 +27,11 @@ export function useGatewayData(apiKey) {
       readiness: settledValue(readiness),
       models: normalizeModels(settledValue(models)?.data?.data),
       metrics: normalizeMetrics(settledValue(metrics)?.text),
+      observability: normalizeObservability(settledValue(observability)?.data),
       errorMessage: firstErrorMessage([health, readiness]),
       modelErrorMessage: settledErrorMessage(models),
       metricsErrorMessage: settledErrorMessage(metrics),
+      observabilityErrorMessage: settledErrorMessage(observability),
       loading: false,
       updatedAt: new Date(),
     };
@@ -54,9 +57,11 @@ function emptyData(loading) {
     readiness: null,
     models: [],
     metrics: null,
+    observability: null,
     errorMessage: "",
     modelErrorMessage: "",
     metricsErrorMessage: "",
+    observabilityErrorMessage: "",
     loading,
     updatedAt: null,
   };
@@ -96,4 +101,31 @@ function normalizeMetrics(metricsText) {
   }
 
   return parseMetrics(metricsText);
+}
+
+function normalizeObservability(observability) {
+  if (!observability) {
+    return null;
+  }
+
+  return {
+    enabled: observability.enabled === true,
+    services: Array.isArray(observability.services)
+      ? observability.services.map((service) => ({
+          name: service.name ?? "",
+          kind: service.kind ?? "",
+          url: service.url ?? "",
+          status: service.status ?? "unknown",
+          statusCode: service.status_code ?? 0,
+          message: service.message ?? "",
+        }))
+      : [],
+    dashboards: Array.isArray(observability.dashboards)
+      ? observability.dashboards.map((dashboard) => ({
+          name: dashboard.name ?? "",
+          url: dashboard.url ?? "",
+          embedUrl: dashboard.embed_url ?? "",
+        }))
+      : [],
+  };
 }

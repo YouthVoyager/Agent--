@@ -1,10 +1,11 @@
 import { StatusCard } from "./StatusCard.js";
 import { h } from "../lib/react.js";
 
-export function StatusGrid({ health, readiness, metrics, modelCount }) {
+export function StatusGrid({ health, readiness, metrics, modelCount, observability }) {
   const healthStatus = health?.data?.status ?? "unknown";
   const readyStatus = readiness?.data?.status ?? "unknown";
   const upStatus = metrics?.up === 1 ? "up" : "unknown";
+  const observabilitySummary = summarizeObservability(observability);
 
   return h(
     "section",
@@ -33,5 +34,28 @@ export function StatusGrid({ health, readiness, metrics, modelCount }) {
       detail: "OpenAI 兼容模型",
       tone: modelCount > 0 ? "accent" : "neutral",
     }),
+    h(StatusCard, {
+      label: "观测系统",
+      value: observabilitySummary.value,
+      detail: observabilitySummary.detail,
+      tone: observabilitySummary.tone,
+    }),
   );
+}
+
+function summarizeObservability(observability) {
+  if (!observability?.enabled) {
+    return {
+      value: "未启用",
+      detail: "observability.stack",
+      tone: "neutral",
+    };
+  }
+  const services = observability.services ?? [];
+  const online = services.filter((service) => service.status === "online").length;
+  return {
+    value: `${online}/${services.length}`,
+    detail: "服务在线",
+    tone: online === services.length && services.length > 0 ? "success" : "warning",
+  };
 }

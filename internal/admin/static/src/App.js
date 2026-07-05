@@ -2,6 +2,7 @@ import { ApiKeyPanel } from "./components/ApiKeyPanel.js";
 import { ErrorBanner } from "./components/ErrorBanner.js";
 import { MetricsPanel } from "./components/MetricsPanel.js";
 import { ModelTable } from "./components/ModelTable.js";
+import { ObservabilityPanel } from "./components/ObservabilityPanel.js";
 import { StatusGrid } from "./components/StatusGrid.js";
 import { useGatewayData } from "./hooks/useGatewayData.js";
 import { h, useCallback, useState } from "./lib/react.js";
@@ -66,6 +67,7 @@ export function App() {
         readiness: data.readiness,
         metrics: data.metrics,
         modelCount: data.models.length,
+        observability: data.observability,
       }),
       h(
         "div",
@@ -80,6 +82,10 @@ export function App() {
           h(MetricsPanel, {
             metrics: data.metrics,
             errorMessage: data.metricsErrorMessage,
+          }),
+          h(ObservabilityPanel, {
+            observability: data.observability,
+            errorMessage: data.observabilityErrorMessage,
           }),
         ),
         h(
@@ -108,6 +114,7 @@ function EndpointPanel() {
       endpointItem("就绪状态", "GET", "/readyz"),
       endpointItem("模型列表", "GET", "/v1/models"),
       endpointItem("运行指标", "GET", "/metrics"),
+      endpointItem("观测状态", "GET", "/admin/api/observability"),
     ),
   );
 }

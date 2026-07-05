@@ -14,6 +14,7 @@ import (
 )
 
 func TestHealthz(t *testing.T) {
+	//测试健康接口
 	gateway := newTestApp(t)
 
 	recorder := httptest.NewRecorder()
@@ -29,6 +30,7 @@ func TestHealthz(t *testing.T) {
 }
 
 func TestReadyzReflectsState(t *testing.T) {
+	//测试准备接口
 	gateway := newTestApp(t)
 
 	recorder := httptest.NewRecorder()

@@ -12,9 +12,9 @@
     "opentelemetry": {
       "enabled": true,
       "service_name": "telemetry-gateway",
-      "service_version": "dev",
-      "environment": "local",
-      "endpoint": "",
+      "service_version": "production",
+      "environment": "production",
+      "endpoint": "http://otel-collector:4318",
       "insecure": true,
       "headers": {},
       "export_timeout": "10s",
@@ -28,9 +28,52 @@
       }
     },
     "stack": {
-      "enabled": false,
-      "services": [],
-      "dashboards": []
+      "enabled": true,
+      "services": [
+        {
+          "name": "Grafana",
+          "kind": "dashboard",
+          "public_url": "http://localhost:3000",
+          "health_url": "http://grafana:3000/api/health"
+        },
+        {
+          "name": "Prometheus",
+          "kind": "metrics-scrape",
+          "public_url": "http://localhost:9090",
+          "health_url": "http://prometheus:9090/-/ready"
+        },
+        {
+          "name": "Mimir",
+          "kind": "metrics-store",
+          "public_url": "http://localhost:9009",
+          "health_url": "http://mimir:9009/ready"
+        },
+        {
+          "name": "Tempo",
+          "kind": "traces-store",
+          "public_url": "http://localhost:3200",
+          "health_url": "http://tempo:3200/ready"
+        },
+        {
+          "name": "Loki",
+          "kind": "logs-store",
+          "public_url": "http://localhost:3100",
+          "health_url": "http://loki:3100/ready"
+        },
+        {
+          "name": "OpenTelemetry Collector",
+          "kind": "collector",
+          "public_url": "http://localhost:13133",
+          "health_url": "http://otel-collector:13133"
+        }
+      ],
+      "dashboards": [
+        {
+          "name": "Agent Gateway Overview",
+          "url": "http://localhost:3000/d/agent-gateway-overview/agent-gateway-overview?orgId=1&refresh=10s",
+          "embed_url": "http://localhost:3000/d/agent-gateway-overview/agent-gateway-overview?orgId=1&refresh=10s&kiosk"
+        }
+      ]
     }
   },
   "auth": {
@@ -53,7 +96,7 @@
     }
   },
   "token_usage": {
-    "enabled": false,
+    "enabled": true,
     "identity_header": "X-User-ID",
     "window": "24h",
     "default_budget_tokens": 100000,

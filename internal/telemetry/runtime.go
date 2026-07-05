@@ -9,10 +9,8 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	otellog "go.opentelemetry.io/otel/log"
-	"go.opentelemetry.io/otel/metric"
 	"go.opentelemetry.io/otel/propagation"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
-	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.37.0"
@@ -27,11 +25,10 @@ type Runtime struct {
 	resource       *resource.Resource
 	propagator     propagation.TextMapPropagator
 	tracerProvider *sdktrace.TracerProvider
-	meterProvider  *sdkmetric.MeterProvider
 	loggerProvider *sdklog.LoggerProvider
 }
 
-// New 初始化 OpenTelemetry Trace、Metric、Log SDK。
+// New 初始化 OpenTelemetry Trace 和 Log SDK。
 func New(ctx context.Context, cfg config.OpenTelemetryConfig) (*Runtime, error) {
 	if ctx == nil {
 		ctx = context.Background()
@@ -41,6 +38,7 @@ func New(ctx context.Context, cfg config.OpenTelemetryConfig) (*Runtime, error) 
 		cfg:        cfg,
 		propagator: newPropagator(),
 	}
+	//设置上下文传播器
 	otel.SetTextMapPropagator(runtime.propagator)
 
 	if !cfg.Enabled {
@@ -52,7 +50,7 @@ func New(ctx context.Context, cfg config.OpenTelemetryConfig) (*Runtime, error) 
 		return nil, err
 	}
 	runtime.resource = res
-
+	//设置遥感提供器
 	if cfg.Traces.Enabled {
 		tracerProvider, err := newTracerProvider(ctx, cfg, res)
 		if err != nil {
@@ -60,15 +58,6 @@ func New(ctx context.Context, cfg config.OpenTelemetryConfig) (*Runtime, error) 
 		}
 		runtime.tracerProvider = tracerProvider
 		otel.SetTracerProvider(tracerProvider)
-	}
-
-	if cfg.Metrics.Enabled {
-		meterProvider, err := newMeterProvider(ctx, cfg, res)
-		if err != nil {
-			return nil, err
-		}
-		runtime.meterProvider = meterProvider
-		otel.SetMeterProvider(meterProvider)
 	}
 
 	if cfg.Logs.Enabled {
@@ -82,7 +71,7 @@ func New(ctx context.Context, cfg config.OpenTelemetryConfig) (*Runtime, error) 
 	return runtime, nil
 }
 
-// Shutdown 刷新并关闭所有 OpenTelemetry Provider。
+// Shutdown 刷新并关闭 OpenTelemetry Provider。
 func (r *Runtime) Shutdown(ctx context.Context) error {
 	if r == nil {
 		return nil
@@ -94,11 +83,6 @@ func (r *Runtime) Shutdown(ctx context.Context) error {
 	var errs []error
 	if r.loggerProvider != nil {
 		if err := r.loggerProvider.Shutdown(ctx); err != nil {
-			errs = append(errs, err)
-		}
-	}
-	if r.meterProvider != nil {
-		if err := r.meterProvider.Shutdown(ctx); err != nil {
 			errs = append(errs, err)
 		}
 	}
@@ -114,10 +98,6 @@ func (r *Runtime) TracesEnabled() bool {
 	return r != nil && r.cfg.Enabled && r.cfg.Traces.Enabled && r.tracerProvider != nil
 }
 
-func (r *Runtime) MetricsEnabled() bool {
-	return r != nil && r.cfg.Enabled && r.cfg.Metrics.Enabled && r.meterProvider != nil
-}
-
 func (r *Runtime) LogsEnabled() bool {
 	return r != nil && r.cfg.Enabled && r.cfg.Logs.Enabled && r.loggerProvider != nil
 }
@@ -127,13 +107,6 @@ func (r *Runtime) TracerProvider() trace.TracerProvider {
 		return otel.GetTracerProvider()
 	}
 	return r.tracerProvider
-}
-
-func (r *Runtime) MeterProvider() metric.MeterProvider {
-	if r == nil || r.meterProvider == nil {
-		return otel.GetMeterProvider()
-	}
-	return r.meterProvider
 }
 
 func (r *Runtime) LoggerProvider() otellog.LoggerProvider {
@@ -151,6 +124,7 @@ func (r *Runtime) Propagator() propagation.TextMapPropagator {
 }
 
 func newResource(ctx context.Context, cfg config.OpenTelemetryConfig) (*resource.Resource, error) {
+	//加载配置
 	attrs := []attribute.KeyValue{
 		semconv.ServiceName(strings.TrimSpace(cfg.ServiceName)),
 	}

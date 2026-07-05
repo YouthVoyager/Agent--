@@ -4,6 +4,7 @@ export function createGatewayClient({ apiKey = "" } = {}) {
     getReady: () => requestJSON("/readyz", { acceptedStatuses: [200, 503] }),
     getMetrics: () => requestText("/metrics"),
     getModels: () => requestJSON("/v1/models", { apiKey }),
+    getObservability: () => requestJSON("/admin/api/observability"),
   };
 }
 

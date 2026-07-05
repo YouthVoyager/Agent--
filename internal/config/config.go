@@ -19,6 +19,7 @@ type ObservabilityConfig struct {
 	MetricsNamespace string              `json:"metrics_namespace"`
 	Tracing          TracingConfig       `json:"tracing"`
 	OpenTelemetry    OpenTelemetryConfig `json:"opentelemetry"`
+	Stack            ObservabilityStack  `json:"stack"`
 }
 
 type TracingConfig struct {
@@ -34,15 +35,32 @@ type OpenTelemetryConfig struct {
 	Insecure       bool                      `json:"insecure"`
 	Headers        map[string]string         `json:"headers"`
 	ExportTimeout  Duration                  `json:"export_timeout"`
-	MetricInterval Duration                  `json:"metric_interval"`
 	Traces         OpenTelemetrySignalConfig `json:"traces"`
-	Metrics        OpenTelemetrySignalConfig `json:"metrics"`
 	Logs           OpenTelemetrySignalConfig `json:"logs"`
 }
 
 type OpenTelemetrySignalConfig struct {
 	Enabled  bool   `json:"enabled"`
 	Endpoint string `json:"endpoint"`
+}
+
+type ObservabilityStack struct {
+	Enabled    bool                           `json:"enabled"`
+	Services   []ObservabilityServiceConfig   `json:"services"`
+	Dashboards []ObservabilityDashboardConfig `json:"dashboards"`
+}
+
+type ObservabilityServiceConfig struct {
+	Name      string `json:"name"`
+	Kind      string `json:"kind"`
+	PublicURL string `json:"public_url"`
+	HealthURL string `json:"health_url"`
+}
+
+type ObservabilityDashboardConfig struct {
+	Name     string `json:"name"`
+	URL      string `json:"url"`
+	EmbedURL string `json:"embed_url"`
 }
 
 type RateLimitConfig struct {

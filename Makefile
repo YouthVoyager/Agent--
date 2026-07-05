@@ -6,7 +6,7 @@ PKG ?= ./...
 
 export GOCACHE
 
-.PHONY: build test lint race docker run clean
+.PHONY: build test lint race docker run observability-up observability-down observability-logs clean
 
 build:
 	$(GO) build -o $(BUILD_DIR)/$(APP_NAME) ./cmd/gateway
@@ -25,6 +25,15 @@ docker:
 
 run:
 	$(GO) run ./cmd/gateway
+
+observability-up:
+	docker compose -f docker-compose.observability.yml up -d --build
+
+observability-down:
+	docker compose -f docker-compose.observability.yml down
+
+observability-logs:
+	docker compose -f docker-compose.observability.yml logs -f --tail=200
 
 clean:
 	rm -rf $(BUILD_DIR)

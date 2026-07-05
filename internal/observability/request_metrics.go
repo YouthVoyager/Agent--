@@ -45,7 +45,7 @@ func (s *requestMetricStats) observe(backend, result string) float64 {
 	return float64(count.success) / float64(count.total)
 }
 
-func (m *Metrics) ObserveModelBackendRequest(ctx context.Context, backend, result string, duration time.Duration) {
+func (m *Metrics) ObserveModelBackendRequest(_ context.Context, backend, result string, duration time.Duration) {
 	if m == nil {
 		return
 	}
@@ -62,65 +62,49 @@ func (m *Metrics) ObserveModelBackendRequest(ctx context.Context, backend, resul
 	if m.RequestDuration != nil {
 		m.RequestDuration.WithLabelValues(backend, result).Observe(duration.Seconds())
 	}
-	successRate := 0.0
 	if m.RequestSuccessRate != nil && m.requestStats != nil {
-		successRate = m.requestStats.observe(backend, result)
+		successRate := m.requestStats.observe(backend, result)
 		m.RequestSuccessRate.WithLabelValues(backend).Set(successRate)
-	}
-	if m.OpenTelemetry != nil {
-		m.OpenTelemetry.ObserveModelBackendRequest(ctx, backend, result, duration, successRate)
 	}
 }
 
-func (m *Metrics) ObserveFirstToken(ctx context.Context, model string, duration time.Duration) {
+func (m *Metrics) ObserveFirstToken(_ context.Context, model string, duration time.Duration) {
 	if m == nil {
 		return
 	}
 	if m.FirstTokenDuration != nil {
 		m.FirstTokenDuration.WithLabelValues(model).Observe(duration.Seconds())
 	}
-	if m.OpenTelemetry != nil {
-		m.OpenTelemetry.ObserveFirstToken(ctx, model, duration)
-	}
 }
 
-func (m *Metrics) ObserveModelFallback(ctx context.Context, fromModel, toModel, reason string) {
+func (m *Metrics) ObserveModelFallback(_ context.Context, fromModel, toModel, reason string) {
 	if m == nil {
 		return
 	}
 	if m.FallbacksTotal != nil {
 		m.FallbacksTotal.WithLabelValues(fromModel, toModel, reason).Inc()
 	}
-	if m.OpenTelemetry != nil {
-		m.OpenTelemetry.ObserveModelFallback(ctx, fromModel, toModel, reason)
-	}
 }
 
-func (m *Metrics) ObserveUpstreamError(ctx context.Context, backend, reason string) {
+func (m *Metrics) ObserveUpstreamError(_ context.Context, backend, reason string) {
 	if m == nil {
 		return
 	}
 	if m.UpstreamErrorsTotal != nil {
 		m.UpstreamErrorsTotal.WithLabelValues(backend, reason).Inc()
 	}
-	if m.OpenTelemetry != nil {
-		m.OpenTelemetry.ObserveUpstreamError(ctx, backend, reason)
-	}
 }
 
-func (m *Metrics) SetCircuitBreakerState(ctx context.Context, backend string, state float64) {
+func (m *Metrics) SetCircuitBreakerState(_ context.Context, backend string, state float64) {
 	if m == nil {
 		return
 	}
 	if m.CircuitBreakerState != nil {
 		m.CircuitBreakerState.WithLabelValues(backend).Set(state)
 	}
-	if m.OpenTelemetry != nil {
-		m.OpenTelemetry.SetCircuitBreakerState(ctx, backend, int64(state))
-	}
 }
 
-func (m *Metrics) ObserveTokenUsage(ctx context.Context, identity, model string, promptTokens, completionTokens, totalTokens int, estimated bool) {
+func (m *Metrics) ObserveTokenUsage(_ context.Context, identity, model string, promptTokens, completionTokens, totalTokens int, estimated bool) {
 	if m == nil {
 		return
 	}
@@ -136,20 +120,9 @@ func (m *Metrics) ObserveTokenUsage(ctx context.Context, identity, model string,
 			m.TokenUsageTotal.WithLabelValues(identity, model, "total", estimatedValue).Add(float64(totalTokens))
 		}
 	}
-	if m.OpenTelemetry != nil {
-		m.OpenTelemetry.ObserveTokenUsage(
-			ctx,
-			identity,
-			model,
-			int64(promptTokens),
-			int64(completionTokens),
-			int64(totalTokens),
-			estimated,
-		)
-	}
 }
 
-func (m *Metrics) SetTokenBudgetRemaining(ctx context.Context, identity string, remainingTokens int) {
+func (m *Metrics) SetTokenBudgetRemaining(_ context.Context, identity string, remainingTokens int) {
 	if m == nil {
 		return
 	}
@@ -159,19 +132,13 @@ func (m *Metrics) SetTokenBudgetRemaining(ctx context.Context, identity string, 
 	if m.TokenBudgetRemaining != nil {
 		m.TokenBudgetRemaining.WithLabelValues(identity).Set(float64(remainingTokens))
 	}
-	if m.OpenTelemetry != nil {
-		m.OpenTelemetry.SetTokenBudgetRemaining(ctx, identity, int64(remainingTokens))
-	}
 }
 
-func (m *Metrics) ObserveTokenBudgetRejected(ctx context.Context, identity, model string) {
+func (m *Metrics) ObserveTokenBudgetRejected(_ context.Context, identity, model string) {
 	if m == nil {
 		return
 	}
 	if m.TokenBudgetRejectedTotal != nil {
 		m.TokenBudgetRejectedTotal.WithLabelValues(identity, model).Inc()
-	}
-	if m.OpenTelemetry != nil {
-		m.OpenTelemetry.ObserveTokenBudgetRejected(ctx, identity, model)
 	}
 }

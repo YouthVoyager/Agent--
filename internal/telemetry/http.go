@@ -6,12 +6,12 @@ import (
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 )
 
-// WrapHandler 为 HTTP 入站请求生成 OpenTelemetry server span 和 HTTP 指标。
+// WrapHandler 为 HTTP 入站请求生成 OpenTelemetry server span。
 func (r *Runtime) WrapHandler(handler http.Handler, operation string) http.Handler {
 	if handler == nil {
 		handler = http.NotFoundHandler()
 	}
-	if r == nil || (!r.TracesEnabled() && !r.MetricsEnabled()) {
+	if r == nil || !r.TracesEnabled() {
 		return handler
 	}
 
@@ -24,34 +24,24 @@ func (r *Runtime) WrapHandler(handler http.Handler, operation string) http.Handl
 			return req.Method + " " + req.URL.Path
 		}),
 	}
-	if r.TracesEnabled() {
-		options = append(options, otelhttp.WithTracerProvider(r.TracerProvider()))
-	}
-	if r.MetricsEnabled() {
-		options = append(options, otelhttp.WithMeterProvider(r.MeterProvider()))
-	}
+	options = append(options, otelhttp.WithTracerProvider(r.TracerProvider()))
 
 	return otelhttp.NewHandler(handler, operation, options...)
 }
 
-// WrapTransport 为 HTTP 出站请求生成 OpenTelemetry client span 和 HTTP 指标。
+// WrapTransport 为 HTTP 出站请求生成 OpenTelemetry client span。
 func (r *Runtime) WrapTransport(base http.RoundTripper) http.RoundTripper {
 	if base == nil {
 		base = http.DefaultTransport
 	}
-	if r == nil || (!r.TracesEnabled() && !r.MetricsEnabled()) {
+	if r == nil || !r.TracesEnabled() {
 		return base
 	}
 
 	options := []otelhttp.Option{
 		otelhttp.WithPropagators(r.Propagator()),
 	}
-	if r.TracesEnabled() {
-		options = append(options, otelhttp.WithTracerProvider(r.TracerProvider()))
-	}
-	if r.MetricsEnabled() {
-		options = append(options, otelhttp.WithMeterProvider(r.MeterProvider()))
-	}
+	options = append(options, otelhttp.WithTracerProvider(r.TracerProvider()))
 
 	return otelhttp.NewTransport(base, options...)
 }

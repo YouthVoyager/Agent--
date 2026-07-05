@@ -68,13 +68,8 @@ func TestLoadDefault(t *testing.T) {
 	if cfg.Observability.OpenTelemetry.ExportTimeout.Duration != 10*time.Second {
 		t.Fatalf("默认 OpenTelemetry 导出超时 = %s, want 10s", cfg.Observability.OpenTelemetry.ExportTimeout.Duration)
 	}
-	if cfg.Observability.OpenTelemetry.MetricInterval.Duration != 30*time.Second {
-		t.Fatalf("默认 OpenTelemetry 指标采集间隔 = %s, want 30s", cfg.Observability.OpenTelemetry.MetricInterval.Duration)
-	}
-	if !cfg.Observability.OpenTelemetry.Traces.Enabled ||
-		!cfg.Observability.OpenTelemetry.Metrics.Enabled ||
-		!cfg.Observability.OpenTelemetry.Logs.Enabled {
-		t.Fatal("默认 OpenTelemetry trace/metric/log 信号应启用")
+	if !cfg.Observability.OpenTelemetry.Traces.Enabled || !cfg.Observability.OpenTelemetry.Logs.Enabled {
+		t.Fatal("默认 OpenTelemetry trace/log 信号应启用")
 	}
 	if !cfg.AI.CircuitBreaker.Enabled {
 		t.Fatal("默认熔断器应启用")
@@ -281,19 +276,15 @@ func TestLoadFileOpenTelemetry(t *testing.T) {
       "environment": "test",
       "endpoint": "http://collector:4318",
       "insecure": true,
-      "headers": {
-        "x-tenant": "demo"
-      },
-      "export_timeout": "3s",
-      "metric_interval": "15s",
-      "traces": {
-        "enabled": true
-      },
-      "metrics": {
-        "enabled": false
-      },
-      "logs": {
-        "enabled": true,
+	      "headers": {
+	        "x-tenant": "demo"
+	      },
+	      "export_timeout": "3s",
+	      "traces": {
+	        "enabled": true
+	      },
+	      "logs": {
+	        "enabled": true,
         "endpoint": "http://collector:4318/v1/logs"
       }
     }
@@ -327,12 +318,6 @@ func TestLoadFileOpenTelemetry(t *testing.T) {
 	if otel.ExportTimeout.Duration != 3*time.Second {
 		t.Fatalf("export_timeout = %s", otel.ExportTimeout.Duration)
 	}
-	if otel.MetricInterval.Duration != 15*time.Second {
-		t.Fatalf("metric_interval = %s", otel.MetricInterval.Duration)
-	}
-	if otel.Metrics.Enabled {
-		t.Fatal("metrics.enabled 应为 false")
-	}
 	if otel.Logs.Endpoint != "http://collector:4318/v1/logs" {
 		t.Fatalf("logs.endpoint = %q", otel.Logs.Endpoint)
 	}
@@ -357,6 +342,90 @@ func TestLoadFileOpenTelemetryInvalidEndpoint(t *testing.T) {
 
 	if _, err := Load(path); err == nil {
 		t.Fatal("Load() error = nil, want invalid endpoint")
+	}
+}
+
+func TestLoadFileObservabilityStack(t *testing.T) {
+	t.Setenv("GATEWAY_CONFIG", "")
+	t.Setenv("GATEWAY_ADDRESS", "")
+	t.Setenv("GATEWAY_ADDR", "")
+
+	path := filepath.Join(t.TempDir(), "gateway.json")
+	data := []byte(`{
+  "observability": {
+    "stack": {
+      "enabled": true,
+      "services": [
+        {
+          "name": "Grafana",
+          "kind": "dashboard",
+          "public_url": "http://localhost:3000",
+          "health_url": "http://grafana:3000/api/health"
+        }
+      ],
+      "dashboards": [
+        {
+          "name": "Agent Gateway Overview",
+          "url": "http://localhost:3000/d/gateway",
+          "embed_url": "http://localhost:3000/d/gateway?kiosk"
+        }
+      ]
+    }
+  }
+}`)
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatalf("写入测试配置失败: %v", err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	stack := cfg.Observability.Stack
+	if !stack.Enabled {
+		t.Fatal("observability.stack.enabled 应为 true")
+	}
+	if len(stack.Services) != 1 {
+		t.Fatalf("services 数量 = %d, want 1", len(stack.Services))
+	}
+	if stack.Services[0].HealthURL != "http://grafana:3000/api/health" {
+		t.Fatalf("health_url = %q", stack.Services[0].HealthURL)
+	}
+	if len(stack.Dashboards) != 1 {
+		t.Fatalf("dashboards 数量 = %d, want 1", len(stack.Dashboards))
+	}
+	if stack.Dashboards[0].EmbedURL != "http://localhost:3000/d/gateway?kiosk" {
+		t.Fatalf("embed_url = %q", stack.Dashboards[0].EmbedURL)
+	}
+}
+
+func TestLoadFileObservabilityStackInvalidURL(t *testing.T) {
+	t.Setenv("GATEWAY_CONFIG", "")
+	t.Setenv("GATEWAY_ADDRESS", "")
+	t.Setenv("GATEWAY_ADDR", "")
+
+	path := filepath.Join(t.TempDir(), "gateway.json")
+	data := []byte(`{
+  "observability": {
+    "stack": {
+      "enabled": true,
+      "services": [
+        {
+          "name": "Grafana",
+          "kind": "dashboard",
+          "public_url": "localhost:3000"
+        }
+      ]
+    }
+  }
+}`)
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatalf("写入测试配置失败: %v", err)
+	}
+
+	if _, err := Load(path); err == nil {
+		t.Fatal("Load() error = nil, want invalid observability stack URL")
 	}
 }
 

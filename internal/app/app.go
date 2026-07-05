@@ -65,13 +65,6 @@ func New(cfg config.Config, logger *slog.Logger, telemetryRuntimes ...*telemetry
 	metrics := observability.NewMetrics(cfg.Observability.MetricsNamespace, func() bool {
 		return gateway.ready.Load()
 	})
-	if telemetryRuntime.MetricsEnabled() {
-		otelMetrics, err := telemetry.NewBusinessMetrics(telemetryRuntime.MeterProvider(), cfg.Observability.MetricsNamespace)
-		if err != nil {
-			return nil, err
-		}
-		metrics.OpenTelemetry = otelMetrics
-	}
 	//新建ai聊天接口句柄
 	llmHandler, err := llm.NewHandler(cfg.AI, logger, metrics, telemetryRuntime)
 	if err != nil {
@@ -113,7 +106,7 @@ func New(cfg config.Config, logger *slog.Logger, telemetryRuntimes ...*telemetry
 		},
 	}, metrics)
 	//注册管理页面
-	admin.Register(mux)
+	admin.Register(mux, cfg.Observability.Stack)
 
 	var rootHandler http.Handler = mux
 	if cfg.Observability.Tracing.Enabled {

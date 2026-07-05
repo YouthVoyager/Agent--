@@ -22,16 +22,17 @@ func Default() Config {
 				Insecure:       true,
 				Headers:        map[string]string{},
 				ExportTimeout:  Duration{Duration: 10 * time.Second},
-				MetricInterval: Duration{Duration: 30 * time.Second},
 				Traces: OpenTelemetrySignalConfig{
-					Enabled: true,
-				},
-				Metrics: OpenTelemetrySignalConfig{
 					Enabled: true,
 				},
 				Logs: OpenTelemetrySignalConfig{
 					Enabled: true,
 				},
+			},
+			Stack: ObservabilityStack{
+				Enabled:    false,
+				Services:   []ObservabilityServiceConfig{},
+				Dashboards: []ObservabilityDashboardConfig{},
 			},
 		},
 		Auth: AuthConfig{

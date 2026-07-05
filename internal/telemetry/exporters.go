@@ -7,18 +7,15 @@ import (
 
 	"github.com/agent-gateway/telemetry-gateway/internal/config"
 	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
-	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
-	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
 const (
-	traceSignalPath  = "/v1/traces"
-	metricSignalPath = "/v1/metrics"
-	logSignalPath    = "/v1/logs"
+	traceSignalPath = "/v1/traces"
+	logSignalPath   = "/v1/logs"
 )
 
 func newTracerProvider(ctx context.Context, cfg config.OpenTelemetryConfig, res *resource.Resource) (*sdktrace.TracerProvider, error) {
@@ -39,27 +36,6 @@ func newTracerProvider(ctx context.Context, cfg config.OpenTelemetryConfig, res 
 	}
 
 	return sdktrace.NewTracerProvider(options...), nil
-}
-
-func newMeterProvider(ctx context.Context, cfg config.OpenTelemetryConfig, res *resource.Resource) (*sdkmetric.MeterProvider, error) {
-	options := []sdkmetric.Option{
-		sdkmetric.WithResource(res),
-	}
-
-	if shouldExport(cfg, cfg.Metrics, "METRICS") {
-		exporter, err := otlpmetrichttp.New(ctx, metricExporterOptions(cfg)...)
-		if err != nil {
-			return nil, err
-		}
-		reader := sdkmetric.NewPeriodicReader(
-			exporter,
-			sdkmetric.WithInterval(cfg.MetricInterval.Duration),
-			sdkmetric.WithTimeout(cfg.ExportTimeout.Duration),
-		)
-		options = append(options, sdkmetric.WithReader(reader))
-	}
-
-	return sdkmetric.NewMeterProvider(options...), nil
 }
 
 func newLoggerProvider(ctx context.Context, cfg config.OpenTelemetryConfig, res *resource.Resource) (*sdklog.LoggerProvider, error) {
@@ -93,22 +69,6 @@ func traceExporterOptions(cfg config.OpenTelemetryConfig) []otlptracehttp.Option
 	}
 	if headers := cleanHeaders(cfg.Headers); len(headers) > 0 {
 		options = append(options, otlptracehttp.WithHeaders(headers))
-	}
-	return options
-}
-
-func metricExporterOptions(cfg config.OpenTelemetryConfig) []otlpmetrichttp.Option {
-	options := []otlpmetrichttp.Option{
-		otlpmetrichttp.WithTimeout(cfg.ExportTimeout.Duration),
-	}
-	if endpoint := signalEndpoint(cfg.Endpoint, cfg.Metrics.Endpoint, metricSignalPath); endpoint != "" {
-		options = append(options, otlpmetrichttp.WithEndpointURL(endpoint))
-	}
-	if cfg.Insecure {
-		options = append(options, otlpmetrichttp.WithInsecure())
-	}
-	if headers := cleanHeaders(cfg.Headers); len(headers) > 0 {
-		options = append(options, otlpmetrichttp.WithHeaders(headers))
 	}
 	return options
 }

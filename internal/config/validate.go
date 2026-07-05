@@ -35,6 +35,9 @@ func (c Config) Validate() error {
 	if err := validateOpenTelemetry(c.Observability.OpenTelemetry); err != nil {
 		return err
 	}
+	if err := validateObservabilityStack(c.Observability.Stack); err != nil {
+		return err
+	}
 	if err := validateAPIKeyAuth(c.Auth.APIKey); err != nil {
 		return err
 	}
@@ -131,16 +134,10 @@ func validateOpenTelemetry(cfg OpenTelemetryConfig) error {
 	if cfg.ExportTimeout.Duration <= 0 {
 		return fmt.Errorf("observability.opentelemetry.export_timeout 必须大于 0")
 	}
-	if cfg.Metrics.Enabled && cfg.MetricInterval.Duration <= 0 {
-		return fmt.Errorf("observability.opentelemetry.metric_interval 必须大于 0")
-	}
 	if err := validateOTLPEndpoint("observability.opentelemetry.endpoint", cfg.Endpoint); err != nil {
 		return err
 	}
 	if err := validateOTLPEndpoint("observability.opentelemetry.traces.endpoint", cfg.Traces.Endpoint); err != nil {
-		return err
-	}
-	if err := validateOTLPEndpoint("observability.opentelemetry.metrics.endpoint", cfg.Metrics.Endpoint); err != nil {
 		return err
 	}
 	if err := validateOTLPEndpoint("observability.opentelemetry.logs.endpoint", cfg.Logs.Endpoint); err != nil {
@@ -165,6 +162,49 @@ func validateOTLPEndpoint(field string, value string) error {
 	}
 	if parsed.Scheme != "http" && parsed.Scheme != "https" {
 		return fmt.Errorf("%s 仅支持 http 或 https", field)
+	}
+	return nil
+}
+
+func validateObservabilityStack(cfg ObservabilityStack) error {
+	if !cfg.Enabled {
+		return nil
+	}
+	if len(cfg.Services) == 0 && len(cfg.Dashboards) == 0 {
+		return fmt.Errorf("observability.stack 启用后至少需要配置 services 或 dashboards")
+	}
+	for index, service := range cfg.Services {
+		prefix := fmt.Sprintf("observability.stack.services[%d]", index)
+		if strings.TrimSpace(service.Name) == "" {
+			return fmt.Errorf("%s.name 不能为空", prefix)
+		}
+		if strings.TrimSpace(service.Kind) == "" {
+			return fmt.Errorf("%s.kind 不能为空", prefix)
+		}
+		if err := validateOTLPEndpoint(prefix+".public_url", service.PublicURL); err != nil {
+			return err
+		}
+		if err := validateOTLPEndpoint(prefix+".health_url", service.HealthURL); err != nil {
+			return err
+		}
+		if strings.TrimSpace(service.PublicURL) == "" && strings.TrimSpace(service.HealthURL) == "" {
+			return fmt.Errorf("%s.public_url 和 %s.health_url 不能同时为空", prefix, prefix)
+		}
+	}
+	for index, dashboard := range cfg.Dashboards {
+		prefix := fmt.Sprintf("observability.stack.dashboards[%d]", index)
+		if strings.TrimSpace(dashboard.Name) == "" {
+			return fmt.Errorf("%s.name 不能为空", prefix)
+		}
+		if err := validateOTLPEndpoint(prefix+".url", dashboard.URL); err != nil {
+			return err
+		}
+		if err := validateOTLPEndpoint(prefix+".embed_url", dashboard.EmbedURL); err != nil {
+			return err
+		}
+		if strings.TrimSpace(dashboard.URL) == "" && strings.TrimSpace(dashboard.EmbedURL) == "" {
+			return fmt.Errorf("%s.url 和 %s.embed_url 不能同时为空", prefix, prefix)
+		}
 	}
 	return nil
 }
