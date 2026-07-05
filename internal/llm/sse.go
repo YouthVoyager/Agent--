@@ -2,6 +2,7 @@ package llm
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -98,10 +99,10 @@ func streamCopy(w http.ResponseWriter, body io.Reader, metrics *observability.Me
 		return false
 	}
 	reader := bufio.NewReader(body)
-	return streamCopyFromReader(w, reader, metrics, model, start, false)
+	return streamCopyFromReader(context.Background(), w, reader, metrics, model, start, false)
 }
 
-func streamCopyFromReader(w io.Writer, reader *bufio.Reader, metrics *observability.Metrics, model string, start time.Time, firstContentTokenObserved bool) bool {
+func streamCopyFromReader(ctx context.Context, w io.Writer, reader *bufio.Reader, metrics *observability.Metrics, model string, start time.Time, firstContentTokenObserved bool) bool {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
 		return false
@@ -118,8 +119,8 @@ func streamCopyFromReader(w io.Writer, reader *bufio.Reader, metrics *observabil
 			// 成功写出并 flush 后，再统计首 content token
 			if !firstContentTokenObserved && hasContentToken(event.Data) {
 				firstContentTokenObserved = true
-				if metrics != nil && metrics.FirstTokenDuration != nil {
-					metrics.FirstTokenDuration.WithLabelValues(model).Observe(time.Since(start).Seconds())
+				if metrics != nil {
+					metrics.ObserveFirstToken(ctx, model, time.Since(start))
 				}
 			}
 		}

@@ -8,6 +8,29 @@
     "metrics_namespace": "gateway",
     "tracing": {
       "enabled": true
+    },
+    "opentelemetry": {
+      "enabled": true,
+      "service_name": "telemetry-gateway",
+      "service_version": "dev",
+      "environment": "local",
+      "endpoint": "",
+      "insecure": true,
+      "headers": {},
+      "export_timeout": "10s",
+      "metric_interval": "30s",
+      "traces": {
+        "enabled": true,
+        "endpoint": ""
+      },
+      "metrics": {
+        "enabled": true,
+        "endpoint": ""
+      },
+      "logs": {
+        "enabled": true,
+        "endpoint": ""
+      }
     }
   },
   "auth": {

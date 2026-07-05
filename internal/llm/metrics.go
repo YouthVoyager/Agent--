@@ -1,6 +1,7 @@
 package llm
 
 import (
+	"context"
 	"time"
 
 	"github.com/agent-gateway/telemetry-gateway/internal/observability"
@@ -18,23 +19,23 @@ func requestResultFromStatus(status int) string {
 	return requestResultFailure
 }
 
-func (h *Handler) observeBackendRequest(backendName, result string, duration time.Duration) {
+func (h *Handler) observeBackendRequest(ctx context.Context, backendName, result string, duration time.Duration) {
 	if h.metrics == nil {
 		return
 	}
-	h.metrics.ObserveModelBackendRequest(backendName, result, duration)
+	h.metrics.ObserveModelBackendRequest(ctx, backendName, result, duration)
 }
 
-func (h *Handler) observeFallback(fromModel, toModel, reason string) {
+func (h *Handler) observeFallback(ctx context.Context, fromModel, toModel, reason string) {
 	if h.metrics == nil {
 		return
 	}
-	h.metrics.ObserveModelFallback(fromModel, toModel, reason)
+	h.metrics.ObserveModelFallback(ctx, fromModel, toModel, reason)
 }
 
-func (h *Handler) observeUpstreamError(backendName, reason string) {
+func (h *Handler) observeUpstreamError(ctx context.Context, backendName, reason string) {
 	if h.metrics == nil {
 		return
 	}
-	h.metrics.ObserveUpstreamError(backendName, reason)
+	h.metrics.ObserveUpstreamError(ctx, backendName, reason)
 }

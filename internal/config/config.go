@@ -16,12 +16,33 @@ type ServerConfig struct {
 }
 
 type ObservabilityConfig struct {
-	MetricsNamespace string        `json:"metrics_namespace"`
-	Tracing          TracingConfig `json:"tracing"`
+	MetricsNamespace string              `json:"metrics_namespace"`
+	Tracing          TracingConfig       `json:"tracing"`
+	OpenTelemetry    OpenTelemetryConfig `json:"opentelemetry"`
 }
 
 type TracingConfig struct {
 	Enabled bool `json:"enabled"`
+}
+
+type OpenTelemetryConfig struct {
+	Enabled        bool                      `json:"enabled"`
+	ServiceName    string                    `json:"service_name"`
+	ServiceVersion string                    `json:"service_version"`
+	Environment    string                    `json:"environment"`
+	Endpoint       string                    `json:"endpoint"`
+	Insecure       bool                      `json:"insecure"`
+	Headers        map[string]string         `json:"headers"`
+	ExportTimeout  Duration                  `json:"export_timeout"`
+	MetricInterval Duration                  `json:"metric_interval"`
+	Traces         OpenTelemetrySignalConfig `json:"traces"`
+	Metrics        OpenTelemetrySignalConfig `json:"metrics"`
+	Logs           OpenTelemetrySignalConfig `json:"logs"`
+}
+
+type OpenTelemetrySignalConfig struct {
+	Enabled  bool   `json:"enabled"`
+	Endpoint string `json:"endpoint"`
 }
 
 type RateLimitConfig struct {

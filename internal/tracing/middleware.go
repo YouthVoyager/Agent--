@@ -18,12 +18,17 @@ func Middleware(logger *slog.Logger) func(http.Handler) http.Handler {
 		}
 
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			info := NewInfoFromHeaders(r.Header)
+			info, ok := FromContext(r.Context())
+			ctx := r.Context()
+			if !ok {
+				info = NewInfoFromHeaders(r.Header)
+				ctx = WithInfo(ctx, info)
+			}
 			setResponseHeaders(w.Header(), info)
 
 			start := time.Now()
 			trackedWriter := newResponseWriter(w)
-			next.ServeHTTP(trackedWriter, r.WithContext(WithInfo(r.Context(), info)))
+			next.ServeHTTP(trackedWriter, r.WithContext(ctx))
 
 			logger.Info(
 				"HTTP 请求完成",

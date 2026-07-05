@@ -14,6 +14,25 @@ func Default() Config {
 			Tracing: TracingConfig{
 				Enabled: true,
 			},
+			OpenTelemetry: OpenTelemetryConfig{
+				Enabled:        true,
+				ServiceName:    "telemetry-gateway",
+				ServiceVersion: "dev",
+				Endpoint:       "",
+				Insecure:       true,
+				Headers:        map[string]string{},
+				ExportTimeout:  Duration{Duration: 10 * time.Second},
+				MetricInterval: Duration{Duration: 30 * time.Second},
+				Traces: OpenTelemetrySignalConfig{
+					Enabled: true,
+				},
+				Metrics: OpenTelemetrySignalConfig{
+					Enabled: true,
+				},
+				Logs: OpenTelemetrySignalConfig{
+					Enabled: true,
+				},
+			},
 		},
 		Auth: AuthConfig{
 			APIKey: APIKeyAuthConfig{

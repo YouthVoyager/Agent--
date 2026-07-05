@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"log/slog"
 	"net/http"
 	"sync/atomic"
@@ -13,6 +14,7 @@ import (
 	"github.com/agent-gateway/telemetry-gateway/internal/llm"
 	"github.com/agent-gateway/telemetry-gateway/internal/observability"
 	"github.com/agent-gateway/telemetry-gateway/internal/ratelimit"
+	"github.com/agent-gateway/telemetry-gateway/internal/telemetry"
 	"github.com/agent-gateway/telemetry-gateway/internal/tokenusage"
 	"github.com/agent-gateway/telemetry-gateway/internal/tracing"
 )
@@ -20,16 +22,17 @@ import (
 // App 表示遥测网关应用，负责持有配置、HTTP 服务与运行状态。
 type App struct {
 	//主程序属性,包含配置,状态,所需依赖等
-	cfg       config.Config
-	logger    *slog.Logger
-	server    *http.Server
-	handler   http.Handler
-	ready     atomic.Bool
-	startedAt time.Time
+	cfg              config.Config
+	logger           *slog.Logger
+	server           *http.Server
+	handler          http.Handler
+	telemetryRuntime *telemetry.Runtime
+	ready            atomic.Bool
+	startedAt        time.Time
 }
 
 // New 创建并初始化一个遥测网关应用实例。
-func New(cfg config.Config, logger *slog.Logger) (*App, error) {
+func New(cfg config.Config, logger *slog.Logger, telemetryRuntimes ...*telemetry.Runtime) (*App, error) {
 	//加载默认配置
 	if err := cfg.Validate(); err != nil {
 		return nil, err
@@ -37,11 +40,23 @@ func New(cfg config.Config, logger *slog.Logger) (*App, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
+	var telemetryRuntime *telemetry.Runtime
+	if len(telemetryRuntimes) > 0 {
+		telemetryRuntime = telemetryRuntimes[0]
+	}
+	if telemetryRuntime == nil {
+		var err error
+		telemetryRuntime, err = telemetry.New(context.Background(), cfg.Observability.OpenTelemetry)
+		if err != nil {
+			return nil, err
+		}
+	}
 
 	gateway := &App{
-		cfg:       cfg,
-		logger:    logger,
-		startedAt: time.Now(),
+		cfg:              cfg,
+		logger:           logger,
+		telemetryRuntime: telemetryRuntime,
+		startedAt:        time.Now(),
 	}
 
 	//创建服务器
@@ -50,8 +65,15 @@ func New(cfg config.Config, logger *slog.Logger) (*App, error) {
 	metrics := observability.NewMetrics(cfg.Observability.MetricsNamespace, func() bool {
 		return gateway.ready.Load()
 	})
+	if telemetryRuntime.MetricsEnabled() {
+		otelMetrics, err := telemetry.NewBusinessMetrics(telemetryRuntime.MeterProvider(), cfg.Observability.MetricsNamespace)
+		if err != nil {
+			return nil, err
+		}
+		metrics.OpenTelemetry = otelMetrics
+	}
 	//新建ai聊天接口句柄
-	llmHandler, err := llm.NewHandler(cfg.AI, logger, metrics)
+	llmHandler, err := llm.NewHandler(cfg.AI, logger, metrics, telemetryRuntime)
 	if err != nil {
 		return nil, err
 	}
@@ -97,6 +119,7 @@ func New(cfg config.Config, logger *slog.Logger) (*App, error) {
 	if cfg.Observability.Tracing.Enabled {
 		rootHandler = tracing.Middleware(logger)(rootHandler)
 	}
+	rootHandler = telemetryRuntime.WrapHandler(rootHandler, "gateway.http")
 
 	gateway.handler = rootHandler
 	gateway.server = &http.Server{

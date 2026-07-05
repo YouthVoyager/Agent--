@@ -1,6 +1,7 @@
 package llm
 
 import (
+	"context"
 	"sync"
 	"time"
 
@@ -163,5 +164,5 @@ func (b *circuitBreaker) setStateMetricLocked(backend string, state int) {
 	if b.metrics == nil {
 		return
 	}
-	b.metrics.SetCircuitBreakerState(backend, float64(state))
+	b.metrics.SetCircuitBreakerState(context.Background(), backend, float64(state))
 }

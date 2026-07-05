@@ -4,6 +4,7 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/agent-gateway/telemetry-gateway/internal/telemetry"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )
@@ -32,15 +33,21 @@ type Metrics struct {
 	TokenBudgetRemaining *prometheus.GaugeVec
 	// TokenBudgetRejectedTotal 记录因 token 预算不足而拒绝的请求数。
 	TokenBudgetRejectedTotal *prometheus.CounterVec
+	// OpenTelemetry 记录同一组业务指标到 OTel MeterProvider。
+	OpenTelemetry *telemetry.BusinessMetrics
 
 	requestStats *requestMetricStats
 }
 
 // NewMetrics 创建并注册网关观测指标集合。
-func NewMetrics(namespace string, ready func() bool) *Metrics {
+func NewMetrics(namespace string, ready func() bool, otelMetrics ...*telemetry.BusinessMetrics) *Metrics {
 	namespace = strings.TrimSpace(namespace)
 	if namespace == "" {
 		namespace = "gateway"
+	}
+	var openTelemetry *telemetry.BusinessMetrics
+	if len(otelMetrics) > 0 {
+		openTelemetry = otelMetrics[0]
 	}
 
 	registry := prometheus.NewRegistry()
@@ -148,7 +155,8 @@ func NewMetrics(namespace string, ready func() bool) *Metrics {
 			[]string{"identity", "model"},
 		),
 
-		requestStats: newRequestMetricStats(),
+		OpenTelemetry: openTelemetry,
+		requestStats:  newRequestMetricStats(),
 	}
 
 	registry.MustRegister(

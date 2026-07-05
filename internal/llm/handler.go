@@ -11,6 +11,9 @@ import (
 
 	"github.com/agent-gateway/telemetry-gateway/internal/config"
 	"github.com/agent-gateway/telemetry-gateway/internal/observability"
+	"github.com/agent-gateway/telemetry-gateway/internal/telemetry"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const maxRequestBodyBytes = 10 << 20
@@ -27,26 +30,36 @@ type Handler struct {
 	firstTokenTimeout time.Duration
 	fallbacks         map[string][]string
 	circuitBreaker    *circuitBreaker
+	tracer            trace.Tracer
 }
 
 // NewHandler 创建并初始化一个 LLM HTTP 处理器。
-func NewHandler(cfg config.AIConfig, logger *slog.Logger, metrics *observability.Metrics) (*Handler, error) {
+func NewHandler(cfg config.AIConfig, logger *slog.Logger, metrics *observability.Metrics, telemetryRuntimes ...*telemetry.Runtime) (*Handler, error) {
 	if logger == nil {
 		logger = slog.Default()
 	}
 	cfg = normalizeAIConfig(cfg)
+	var telemetryRuntime *telemetry.Runtime
+	if len(telemetryRuntimes) > 0 {
+		telemetryRuntime = telemetryRuntimes[0]
+	}
 	//配置tcp超时
 	transport := http.DefaultTransport.(*http.Transport).Clone()
 	transport.ResponseHeaderTimeout = cfg.RequestTimeout.Duration
+	var roundTripper http.RoundTripper = transport
+	if telemetryRuntime != nil {
+		roundTripper = telemetryRuntime.WrapTransport(roundTripper)
+	}
 
 	handler := &Handler{
 		logger:            logger,
-		client:            &http.Client{Transport: transport},
+		client:            &http.Client{Transport: roundTripper},
 		backends:          make(map[string]modelBackend),
 		metrics:           metrics,
 		requestTimeout:    cfg.RequestTimeout.Duration,
 		firstTokenTimeout: cfg.FirstTokenTimeout.Duration,
 		fallbacks:         normalizeFallbacks(cfg.Fallbacks),
+		tracer:            otel.Tracer("github.com/agent-gateway/telemetry-gateway/internal/llm"),
 	}
 	//读取配置
 	backendNames := make([]string, 0, len(cfg.Backends))

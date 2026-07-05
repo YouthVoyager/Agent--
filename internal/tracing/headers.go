@@ -4,6 +4,10 @@ import (
 	"context"
 	"net/http"
 	"strings"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
+	oteltrace "go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -50,6 +54,13 @@ func NewInfoFromHeaders(headers http.Header) Info {
 // Inject 将 context 中的追踪信息注入到出站 HTTP 请求。
 func Inject(req *http.Request, ctx context.Context) {
 	if req == nil {
+		return
+	}
+	if spanContext := oteltrace.SpanContextFromContext(ctx); spanContext.IsValid() {
+		otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
+		traceID := spanContext.TraceID().String()
+		req.Header.Set(HeaderTraceID, traceID)
+		req.Header.Set(HeaderRequestID, traceID)
 		return
 	}
 	info, ok := FromContext(ctx)

@@ -117,6 +117,23 @@ func TestTracingContinuesIncomingTraceParent(t *testing.T) {
 	}
 }
 
+func TestTracingContinuesIncomingTraceIDHeader(t *testing.T) {
+	gateway := newTestApp(t)
+	incomingTraceID := "4bf92f3577b34da6a3ce929d0e0e4736"
+
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+	request.Header.Set("X-Trace-ID", incomingTraceID)
+	gateway.Handler().ServeHTTP(recorder, request)
+
+	if got := recorder.Header().Get("X-Trace-ID"); got != incomingTraceID {
+		t.Fatalf("X-Trace-ID = %q, want %q", got, incomingTraceID)
+	}
+	if got := recorder.Header().Get("Traceparent"); !strings.Contains(got, incomingTraceID) {
+		t.Fatalf("Traceparent = %q, want 包含 %q", got, incomingTraceID)
+	}
+}
+
 func TestTracingPropagatesToUpstream(t *testing.T) {
 	var upstreamTraceParent string
 	var upstreamTraceID string

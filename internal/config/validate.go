@@ -32,6 +32,9 @@ func (c Config) Validate() error {
 	if strings.TrimSpace(c.Observability.MetricsNamespace) == "" {
 		return fmt.Errorf("observability.metrics_namespace 不能为空")
 	}
+	if err := validateOpenTelemetry(c.Observability.OpenTelemetry); err != nil {
+		return err
+	}
 	if err := validateAPIKeyAuth(c.Auth.APIKey); err != nil {
 		return err
 	}
@@ -115,6 +118,54 @@ func (c Config) Validate() error {
 		return err
 	}
 
+	return nil
+}
+
+func validateOpenTelemetry(cfg OpenTelemetryConfig) error {
+	if !cfg.Enabled {
+		return nil
+	}
+	if strings.TrimSpace(cfg.ServiceName) == "" {
+		return fmt.Errorf("observability.opentelemetry.service_name 不能为空")
+	}
+	if cfg.ExportTimeout.Duration <= 0 {
+		return fmt.Errorf("observability.opentelemetry.export_timeout 必须大于 0")
+	}
+	if cfg.Metrics.Enabled && cfg.MetricInterval.Duration <= 0 {
+		return fmt.Errorf("observability.opentelemetry.metric_interval 必须大于 0")
+	}
+	if err := validateOTLPEndpoint("observability.opentelemetry.endpoint", cfg.Endpoint); err != nil {
+		return err
+	}
+	if err := validateOTLPEndpoint("observability.opentelemetry.traces.endpoint", cfg.Traces.Endpoint); err != nil {
+		return err
+	}
+	if err := validateOTLPEndpoint("observability.opentelemetry.metrics.endpoint", cfg.Metrics.Endpoint); err != nil {
+		return err
+	}
+	if err := validateOTLPEndpoint("observability.opentelemetry.logs.endpoint", cfg.Logs.Endpoint); err != nil {
+		return err
+	}
+	for key := range cfg.Headers {
+		if strings.TrimSpace(key) == "" {
+			return fmt.Errorf("observability.opentelemetry.headers 包含空 key")
+		}
+	}
+	return nil
+}
+
+func validateOTLPEndpoint(field string, value string) error {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil
+	}
+	parsed, err := url.Parse(value)
+	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
+		return fmt.Errorf("%s 必须是有效的绝对 URL", field)
+	}
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		return fmt.Errorf("%s 仅支持 http 或 https", field)
+	}
 	return nil
 }
 

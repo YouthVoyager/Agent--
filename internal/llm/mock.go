@@ -6,13 +6,34 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 func (h *Handler) serveMock(w http.ResponseWriter, r *http.Request, req chatCompletionRequest, backend modelBackend) {
+	ctx, span := h.tracer.Start(r.Context(), "llm.backend_request", trace.WithAttributes(
+		attribute.String("llm.backend", backend.cfg.Name),
+		attribute.String("gen_ai.request.model", req.Model),
+		attribute.Bool("gen_ai.request.stream", req.Stream),
+		attribute.Bool("llm.mock", true),
+	))
+	defer span.End()
+	r = r.WithContext(ctx)
+
 	start := time.Now()
 	result := requestResultSuccess
 	defer func() {
-		h.observeBackendRequest(backend.cfg.Name, result, time.Since(start))
+		duration := time.Since(start)
+		h.observeBackendRequest(r.Context(), backend.cfg.Name, result, duration)
+		span.SetAttributes(
+			attribute.String("llm.result", result),
+			attribute.Int64("llm.duration_ms", duration.Milliseconds()),
+		)
+		if result != requestResultSuccess {
+			span.SetStatus(codes.Error, result)
+		}
 	}()
 
 	if req.Stream {

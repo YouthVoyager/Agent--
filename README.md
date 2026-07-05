@@ -32,6 +32,7 @@ Tempo      Mimir      Datadog/其他
 - 可配置的 token 用量统计和预算控制；
 - 上游超时、熔断和模型降级；
 - 请求链路追踪，支持 `traceparent` 与 `X-Trace-ID` 透传；
+- OpenTelemetry Trace、Metric、Log 生成、采集和 OTLP/HTTP 导出；
 - `context.Context` 生命周期和 SIGTERM 优雅退出；
 - 内置 React 管理页面 `/admin/`；
 - `/healthz`、`/readyz`、`/metrics`；
@@ -57,7 +58,9 @@ curl localhost:8080/metrics
 
 浏览器访问 `http://localhost:8080/admin/` 可打开管理页面。页面会读取健康状态、就绪状态、Prometheus 指标和模型列表；开启 API Key 鉴权时，可在页面右侧填写访问凭据。
 
-默认启用请求链路追踪。网关会优先延续入站 `traceparent`，其次使用合法的 `X-Trace-ID` / `X-Request-ID`，都不存在时生成新的 trace id。每个响应都会带上 `Traceparent`、`X-Trace-ID` 和 `X-Request-ID`，代理到上游模型服务时也会透传同一 trace id 并创建新的子 span。访问日志会记录 `trace_id`、`span_id`、HTTP 方法、路径、状态码、响应字节数和耗时。
+默认启用请求链路追踪和 OpenTelemetry instrumentation。网关会优先延续入站 `traceparent`，其次使用合法的 `X-Trace-ID` / `X-Request-ID`，都不存在时生成新的 trace id。每个响应都会带上 `Traceparent`、`X-Trace-ID` 和 `X-Request-ID`，代理到上游模型服务时也会透传同一 trace id 并创建新的子 span。访问日志会记录 `trace_id`、`span_id`、HTTP 方法、路径、状态码、响应字节数和耗时。
+
+未配置 OTLP endpoint 时，OpenTelemetry 只在进程内生成 trace、metric 和 log，不会向本地 collector 发请求。配置 `observability.opentelemetry.endpoint` 或设置 `OTEL_EXPORTER_OTLP_ENDPOINT` 后，会通过 OTLP/HTTP 导出 Trace、Metric、Log；也可以分别配置 `traces.endpoint`、`metrics.endpoint`、`logs.endpoint`。
 
 LLM 请求会暴露这些 Prometheus 指标：
 
@@ -126,6 +129,29 @@ make run
     "metrics_namespace": "gateway",
     "tracing": {
       "enabled": true
+    },
+    "opentelemetry": {
+      "enabled": true,
+      "service_name": "telemetry-gateway",
+      "service_version": "dev",
+      "environment": "local",
+      "endpoint": "",
+      "insecure": true,
+      "headers": {},
+      "export_timeout": "10s",
+      "metric_interval": "30s",
+      "traces": {
+        "enabled": true,
+        "endpoint": ""
+      },
+      "metrics": {
+        "enabled": true,
+        "endpoint": ""
+      },
+      "logs": {
+        "enabled": true,
+        "endpoint": ""
+      }
     }
   },
   "auth": {
@@ -192,6 +218,31 @@ make run
   }
 }
 ```
+
+如需导出 OpenTelemetry Trace、Metric、Log 到本地 collector：
+
+```json
+{
+  "observability": {
+    "opentelemetry": {
+      "enabled": true,
+      "endpoint": "http://localhost:4318",
+      "insecure": true,
+      "traces": {
+        "enabled": true
+      },
+      "metrics": {
+        "enabled": true
+      },
+      "logs": {
+        "enabled": true
+      }
+    }
+  }
+}
+```
+
+上面的 `endpoint` 是 OTLP/HTTP base URL，网关会分别导出到 `/v1/traces`、`/v1/metrics` 和 `/v1/logs`。如果需要信号级地址，可以使用 `traces.endpoint`、`metrics.endpoint`、`logs.endpoint` 指定完整 URL。
 
 API Key 鉴权默认关闭。开启后，所有 `/v1/` 请求都需要携带 `Authorization: Bearer <api_key>`；`/healthz`、`/readyz`、`/metrics` 和 `/debug/pprof` 保持公开。配置中只保存 API Key 的 SHA-256 哈希：
 

@@ -13,6 +13,9 @@ import (
 
 	"github.com/agent-gateway/telemetry-gateway/internal/config"
 	"github.com/agent-gateway/telemetry-gateway/internal/tracing"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 const (
@@ -60,8 +63,16 @@ func doneAttempt() proxyAttemptResult {
 }
 
 func (h *Handler) serveChatCompletionWithFallback(w http.ResponseWriter, r *http.Request, rawBody []byte, req chatCompletionRequest) {
+	ctx, span := h.tracer.Start(r.Context(), "llm.chat_completion", trace.WithAttributes(
+		attribute.String("gen_ai.request.model", req.Model),
+		attribute.Bool("gen_ai.request.stream", req.Stream),
+	))
+	defer span.End()
+	r = r.WithContext(ctx)
+
 	candidates := h.candidateModels(req.Model)
 	if len(candidates) == 0 {
+		span.SetStatus(codes.Error, "missing_model_candidates")
 		writeOpenAIError(w, http.StatusNotFound, "未找到可用模型候选", "invalid_request_error", "model")
 		return
 	}
@@ -109,7 +120,12 @@ func (h *Handler) serveChatCompletionWithFallback(w http.ResponseWriter, r *http
 				"backend", backend.cfg.Name,
 				"reason", result.reason,
 			)
-			h.observeFallback(model, nextModel, result.reason)
+			span.AddEvent("llm.fallback", trace.WithAttributes(
+				attribute.String("from_model", model),
+				attribute.String("to_model", nextModel),
+				attribute.String("reason", result.reason),
+			))
+			h.observeFallback(r.Context(), model, nextModel, result.reason)
 			continue
 		}
 	}
@@ -120,12 +136,23 @@ func (h *Handler) serveChatCompletionWithFallback(w http.ResponseWriter, r *http
 		status = http.StatusGatewayTimeout
 		message = "模型后端请求超时"
 	}
+	span.SetStatus(codes.Error, message)
 	writeOpenAIError(w, status, message, "server_error", "")
 }
 
 func (h *Handler) proxyOpenAICompatible(w http.ResponseWriter, r *http.Request, rawBody []byte, req chatCompletionRequest, backend modelBackend) proxyAttemptResult {
+	ctx, span := h.tracer.Start(r.Context(), "llm.backend_request", trace.WithAttributes(
+		attribute.String("llm.backend", backend.cfg.Name),
+		attribute.String("gen_ai.request.model", req.Model),
+		attribute.Bool("gen_ai.request.stream", req.Stream),
+	))
+	defer span.End()
+	r = r.WithContext(ctx)
+
 	permit, ok := h.allowBackendRequest(backend.cfg.Name)
 	if !ok {
+		span.SetAttributes(attribute.String("llm.failure_reason", failureReasonCircuitOpen))
+		span.SetStatus(codes.Error, failureReasonCircuitOpen)
 		return retryableAttempt(failureReasonCircuitOpen)
 	}
 
@@ -133,7 +160,15 @@ func (h *Handler) proxyOpenAICompatible(w http.ResponseWriter, r *http.Request, 
 	start := time.Now()
 	result := requestResultFailure
 	defer func() {
-		h.observeBackendRequest(backend.cfg.Name, result, time.Since(start))
+		duration := time.Since(start)
+		h.observeBackendRequest(r.Context(), backend.cfg.Name, result, duration)
+		span.SetAttributes(
+			attribute.String("llm.result", result),
+			attribute.Int64("llm.duration_ms", duration.Milliseconds()),
+		)
+		if result != requestResultSuccess {
+			span.SetStatus(codes.Error, result)
+		}
 	}()
 
 	if req.Stream {
@@ -164,7 +199,7 @@ func (h *Handler) proxyOpenAICompatibleNonStream(w http.ResponseWriter, r *http.
 			return doneAttempt()
 		}
 		permit.Fail()
-		h.observeUpstreamError(backend.cfg.Name, reason)
+		h.observeUpstreamError(r.Context(), backend.cfg.Name, reason)
 		h.logger.Warn(
 			"模型后端请求失败",
 			"trace_id", tracing.TraceIDFromContext(r.Context()),
@@ -172,6 +207,8 @@ func (h *Handler) proxyOpenAICompatibleNonStream(w http.ResponseWriter, r *http.
 			"reason", reason,
 			"error", err,
 		)
+		trace.SpanFromContext(r.Context()).RecordError(err)
+		trace.SpanFromContext(r.Context()).SetAttributes(attribute.String("llm.failure_reason", reason))
 		return retryableAttempt(reason)
 	}
 	defer resp.Body.Close()
@@ -181,7 +218,11 @@ func (h *Handler) proxyOpenAICompatibleNonStream(w http.ResponseWriter, r *http.
 	if isRetryableStatus(resp.StatusCode) {
 		reason := failureReasonFromStatus(resp.StatusCode)
 		permit.Fail()
-		h.observeUpstreamError(backend.cfg.Name, reason)
+		h.observeUpstreamError(r.Context(), backend.cfg.Name, reason)
+		trace.SpanFromContext(r.Context()).SetAttributes(
+			attribute.String("llm.failure_reason", reason),
+			attribute.Int("http.response.status_code", resp.StatusCode),
+		)
 		return retryableAttempt(reason)
 	}
 
@@ -194,7 +235,9 @@ func (h *Handler) proxyOpenAICompatibleNonStream(w http.ResponseWriter, r *http.
 		}
 		*result = requestResultFailure
 		permit.Fail()
-		h.observeUpstreamError(backend.cfg.Name, reason)
+		h.observeUpstreamError(r.Context(), backend.cfg.Name, reason)
+		trace.SpanFromContext(r.Context()).RecordError(err)
+		trace.SpanFromContext(r.Context()).SetAttributes(attribute.String("llm.failure_reason", reason))
 		return retryableAttempt(reason)
 	}
 

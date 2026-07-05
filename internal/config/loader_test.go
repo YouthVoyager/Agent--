@@ -59,6 +59,23 @@ func TestLoadDefault(t *testing.T) {
 	if !cfg.Observability.Tracing.Enabled {
 		t.Fatal("默认请求链路追踪应启用")
 	}
+	if !cfg.Observability.OpenTelemetry.Enabled {
+		t.Fatal("默认 OpenTelemetry 应启用")
+	}
+	if cfg.Observability.OpenTelemetry.ServiceName != "telemetry-gateway" {
+		t.Fatalf("默认 OpenTelemetry 服务名 = %q", cfg.Observability.OpenTelemetry.ServiceName)
+	}
+	if cfg.Observability.OpenTelemetry.ExportTimeout.Duration != 10*time.Second {
+		t.Fatalf("默认 OpenTelemetry 导出超时 = %s, want 10s", cfg.Observability.OpenTelemetry.ExportTimeout.Duration)
+	}
+	if cfg.Observability.OpenTelemetry.MetricInterval.Duration != 30*time.Second {
+		t.Fatalf("默认 OpenTelemetry 指标采集间隔 = %s, want 30s", cfg.Observability.OpenTelemetry.MetricInterval.Duration)
+	}
+	if !cfg.Observability.OpenTelemetry.Traces.Enabled ||
+		!cfg.Observability.OpenTelemetry.Metrics.Enabled ||
+		!cfg.Observability.OpenTelemetry.Logs.Enabled {
+		t.Fatal("默认 OpenTelemetry trace/metric/log 信号应启用")
+	}
 	if !cfg.AI.CircuitBreaker.Enabled {
 		t.Fatal("默认熔断器应启用")
 	}
@@ -246,6 +263,100 @@ func TestLoadFileTracingDisabled(t *testing.T) {
 
 	if cfg.Observability.Tracing.Enabled {
 		t.Fatal("请求链路追踪应关闭")
+	}
+}
+
+func TestLoadFileOpenTelemetry(t *testing.T) {
+	t.Setenv("GATEWAY_CONFIG", "")
+	t.Setenv("GATEWAY_ADDRESS", "")
+	t.Setenv("GATEWAY_ADDR", "")
+
+	path := filepath.Join(t.TempDir(), "gateway.json")
+	data := []byte(`{
+  "observability": {
+    "opentelemetry": {
+      "enabled": true,
+      "service_name": "agent-gateway",
+      "service_version": "1.2.3",
+      "environment": "test",
+      "endpoint": "http://collector:4318",
+      "insecure": true,
+      "headers": {
+        "x-tenant": "demo"
+      },
+      "export_timeout": "3s",
+      "metric_interval": "15s",
+      "traces": {
+        "enabled": true
+      },
+      "metrics": {
+        "enabled": false
+      },
+      "logs": {
+        "enabled": true,
+        "endpoint": "http://collector:4318/v1/logs"
+      }
+    }
+  }
+}`)
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatalf("写入测试配置失败: %v", err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+
+	otel := cfg.Observability.OpenTelemetry
+	if otel.ServiceName != "agent-gateway" {
+		t.Fatalf("service_name = %q", otel.ServiceName)
+	}
+	if otel.ServiceVersion != "1.2.3" {
+		t.Fatalf("service_version = %q", otel.ServiceVersion)
+	}
+	if otel.Environment != "test" {
+		t.Fatalf("environment = %q", otel.Environment)
+	}
+	if otel.Endpoint != "http://collector:4318" {
+		t.Fatalf("endpoint = %q", otel.Endpoint)
+	}
+	if otel.Headers["x-tenant"] != "demo" {
+		t.Fatalf("headers[x-tenant] = %q", otel.Headers["x-tenant"])
+	}
+	if otel.ExportTimeout.Duration != 3*time.Second {
+		t.Fatalf("export_timeout = %s", otel.ExportTimeout.Duration)
+	}
+	if otel.MetricInterval.Duration != 15*time.Second {
+		t.Fatalf("metric_interval = %s", otel.MetricInterval.Duration)
+	}
+	if otel.Metrics.Enabled {
+		t.Fatal("metrics.enabled 应为 false")
+	}
+	if otel.Logs.Endpoint != "http://collector:4318/v1/logs" {
+		t.Fatalf("logs.endpoint = %q", otel.Logs.Endpoint)
+	}
+}
+
+func TestLoadFileOpenTelemetryInvalidEndpoint(t *testing.T) {
+	t.Setenv("GATEWAY_CONFIG", "")
+	t.Setenv("GATEWAY_ADDRESS", "")
+	t.Setenv("GATEWAY_ADDR", "")
+
+	path := filepath.Join(t.TempDir(), "gateway.json")
+	data := []byte(`{
+  "observability": {
+    "opentelemetry": {
+      "endpoint": "collector:4318"
+    }
+  }
+}`)
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		t.Fatalf("写入测试配置失败: %v", err)
+	}
+
+	if _, err := Load(path); err == nil {
+		t.Fatal("Load() error = nil, want invalid endpoint")
 	}
 }
 

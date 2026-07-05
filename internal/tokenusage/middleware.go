@@ -2,6 +2,7 @@ package tokenusage
 
 import (
 	"bytes"
+	"context"
 	"io"
 	"math"
 	"net/http"
@@ -71,7 +72,7 @@ func (c *Controller) Middleware(next http.Handler) http.Handler {
 
 		reservation, snapshot, ok := c.limiter.reserve(identity, estimate.TotalTokens)
 		if !ok {
-			c.observeBudgetRejected(identity, estimate.Model)
+			c.observeBudgetRejected(r.Context(), identity, estimate.Model)
 			writeBudgetHeaders(w.Header(), snapshot)
 			w.Header().Set("Retry-After", retryAfter(snapshot.ResetAt, time.Now()))
 			writeTokenUsageError(w, http.StatusTooManyRequests, "token 预算不足，请在预算窗口重置后重试", "rate_limit_error")
@@ -85,7 +86,7 @@ func (c *Controller) Middleware(next http.Handler) http.Handler {
 		defer func() {
 			if !released {
 				snapshot := reservation.Release()
-				c.observeBudgetRemaining(identity, snapshot)
+				c.observeBudgetRemaining(r.Context(), identity, snapshot)
 			}
 		}()
 
@@ -94,15 +95,15 @@ func (c *Controller) Middleware(next http.Handler) http.Handler {
 		status := capture.Status()
 		if status < http.StatusOK || status >= http.StatusMultipleChoices {
 			snapshot := reservation.Release()
-			c.observeBudgetRemaining(identity, snapshot)
+			c.observeBudgetRemaining(r.Context(), identity, snapshot)
 			released = true
 			return
 		}
 
 		usage := usageFromResponseBody(capture.Body(), capture.Header().Get("Content-Type"), capture.Truncated(), estimate)
 		snapshot = reservation.Commit(usage.TotalTokens)
-		c.observeUsage(identity, usage)
-		c.observeBudgetRemaining(identity, snapshot)
+		c.observeUsage(r.Context(), identity, usage)
+		c.observeBudgetRemaining(r.Context(), identity, snapshot)
 		released = true
 	})
 }
@@ -138,11 +139,12 @@ func retryAfter(resetAt time.Time, now time.Time) string {
 	return strconv.Itoa(seconds)
 }
 
-func (c *Controller) observeUsage(identity string, usage Usage) {
+func (c *Controller) observeUsage(ctx context.Context, identity string, usage Usage) {
 	if c == nil || c.metrics == nil {
 		return
 	}
 	c.metrics.ObserveTokenUsage(
+		ctx,
 		identity,
 		usage.Model,
 		usage.PromptTokens,
@@ -152,16 +154,16 @@ func (c *Controller) observeUsage(identity string, usage Usage) {
 	)
 }
 
-func (c *Controller) observeBudgetRemaining(identity string, snapshot BudgetSnapshot) {
+func (c *Controller) observeBudgetRemaining(ctx context.Context, identity string, snapshot BudgetSnapshot) {
 	if c == nil || c.metrics == nil {
 		return
 	}
-	c.metrics.SetTokenBudgetRemaining(identity, snapshot.Remaining)
+	c.metrics.SetTokenBudgetRemaining(ctx, identity, snapshot.Remaining)
 }
 
-func (c *Controller) observeBudgetRejected(identity, model string) {
+func (c *Controller) observeBudgetRejected(ctx context.Context, identity, model string) {
 	if c == nil || c.metrics == nil {
 		return
 	}
-	c.metrics.ObserveTokenBudgetRejected(identity, model)
+	c.metrics.ObserveTokenBudgetRejected(ctx, identity, model)
 }

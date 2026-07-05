@@ -9,6 +9,9 @@ import (
 	"time"
 
 	"github.com/agent-gateway/telemetry-gateway/internal/tracing"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 )
 
 type sseReadResult struct {
@@ -48,7 +51,7 @@ func (h *Handler) proxyOpenAICompatibleStream(
 			return doneAttempt()
 		}
 		permit.Fail()
-		h.observeUpstreamError(backend.cfg.Name, reason)
+		h.observeUpstreamError(r.Context(), backend.cfg.Name, reason)
 		h.logger.Warn(
 			"模型后端流式请求失败",
 			"trace_id", tracing.TraceIDFromContext(r.Context()),
@@ -56,6 +59,8 @@ func (h *Handler) proxyOpenAICompatibleStream(
 			"reason", reason,
 			"error", err,
 		)
+		trace.SpanFromContext(r.Context()).RecordError(err)
+		trace.SpanFromContext(r.Context()).SetAttributes(attribute.String("llm.failure_reason", reason))
 		return retryableAttempt(reason)
 	}
 	defer resp.Body.Close()
@@ -64,7 +69,11 @@ func (h *Handler) proxyOpenAICompatibleStream(
 	if isRetryableStatus(resp.StatusCode) {
 		reason := failureReasonFromStatus(resp.StatusCode)
 		permit.Fail()
-		h.observeUpstreamError(backend.cfg.Name, reason)
+		h.observeUpstreamError(r.Context(), backend.cfg.Name, reason)
+		trace.SpanFromContext(r.Context()).SetAttributes(
+			attribute.String("llm.failure_reason", reason),
+			attribute.Int("http.response.status_code", resp.StatusCode),
+		)
 		return retryableAttempt(reason)
 	}
 	if resp.StatusCode >= http.StatusBadRequest {
@@ -88,7 +97,9 @@ func (h *Handler) proxyOpenAICompatibleStream(
 		}
 		*result = requestResultFailure
 		permit.Fail()
-		h.observeUpstreamError(backend.cfg.Name, reason)
+		h.observeUpstreamError(r.Context(), backend.cfg.Name, reason)
+		trace.SpanFromContext(r.Context()).RecordError(readErr)
+		trace.SpanFromContext(r.Context()).SetAttributes(attribute.String("llm.failure_reason", reason))
 		return retryableAttempt(reason)
 	}
 
@@ -105,14 +116,15 @@ func (h *Handler) proxyOpenAICompatibleStream(
 		permit.Ignore()
 		return doneAttempt()
 	}
-	if firstToken && h.metrics != nil && h.metrics.FirstTokenDuration != nil {
-		h.metrics.FirstTokenDuration.WithLabelValues(backend.cfg.Name).Observe(time.Since(start).Seconds())
+	if firstToken && h.metrics != nil {
+		h.metrics.ObserveFirstToken(r.Context(), backend.cfg.Name, time.Since(start))
 	}
 	//开始发送
-	if ok := streamCopyFromReader(w, reader, h.metrics, backend.cfg.Name, start, firstToken); !ok {
+	if ok := streamCopyFromReader(r.Context(), w, reader, h.metrics, backend.cfg.Name, start, firstToken); !ok {
 		*result = requestResultFailure
 		permit.Fail()
-		h.observeUpstreamError(backend.cfg.Name, failureReasonStream)
+		h.observeUpstreamError(r.Context(), backend.cfg.Name, failureReasonStream)
+		trace.SpanFromContext(r.Context()).SetStatus(codes.Error, failureReasonStream)
 		return doneAttempt()
 	}
 	permit.Succeed()
